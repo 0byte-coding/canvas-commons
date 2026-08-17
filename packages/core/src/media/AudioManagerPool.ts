@@ -4,7 +4,9 @@ import {AudioManager} from './AudioManager';
 import {AudioResourceManager} from './AudioResourceManager';
 import {
   AudioTrackAssignments,
+  AudioTrackId,
   AudioTrackMixMap,
+  PROJECT_AUDIO_TRACK_ID,
   audioTrackIdForSound,
   resolveAudioMix,
 } from './trackMix';
@@ -21,6 +23,7 @@ export class AudioManagerPool {
   private paused: boolean = true;
   private trackMix: AudioTrackMixMap = {};
   private trackAssignments: AudioTrackAssignments = {};
+  private defaultTrackId: AudioTrackId = PROJECT_AUDIO_TRACK_ID;
 
   public constructor(
     private readonly logger: Logger,
@@ -54,14 +57,18 @@ export class AudioManagerPool {
     this.applyMix();
   }
 
-  public setTrackAssignments(assignments: AudioTrackAssignments) {
+  public setTrackAssignments(
+    assignments: AudioTrackAssignments,
+    defaultTrackId: AudioTrackId = PROJECT_AUDIO_TRACK_ID,
+  ) {
     this.trackAssignments = assignments;
+    this.defaultTrackId = defaultTrackId;
     this.applyMix();
   }
 
   private mixFor(sound: Sound) {
     return resolveAudioMix(
-      audioTrackIdForSound(sound, this.trackAssignments),
+      audioTrackIdForSound(sound, this.trackAssignments, this.defaultTrackId),
       this.trackMix,
       this.muted,
       this.volume,

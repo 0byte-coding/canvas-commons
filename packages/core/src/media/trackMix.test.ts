@@ -60,6 +60,16 @@ describe('audioTrackIdForSound', () => {
       ),
     ).toBe(MEDIA_AUDIO_TRACK_ID);
   });
+
+  it('uses the provided default track for unassigned audio clips', () => {
+    expect(
+      audioTrackIdForSound(
+        {sourceKey: 'audioKey', origin: 'audio'},
+        {},
+        'music',
+      ),
+    ).toBe('music');
+  });
 });
 
 describe('applyClipOffsets', () => {

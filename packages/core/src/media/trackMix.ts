@@ -126,6 +126,7 @@ export function normalizeTrackMix(mix: unknown): AudioTrackMixMap {
 export function audioTrackIdForSound(
   sound: {sourceKey?: string; origin?: 'media' | 'audio'},
   assignments: AudioTrackAssignments = {},
+  defaultTrackId: AudioTrackId = PROJECT_AUDIO_TRACK_ID,
 ): AudioTrackId {
   const origin = sound.origin ?? (sound.sourceKey ? 'media' : 'audio');
   if (origin === 'media') {
@@ -134,7 +135,7 @@ export function audioTrackIdForSound(
   if (sound.sourceKey && assignments[sound.sourceKey]) {
     return assignments[sound.sourceKey];
   }
-  return PROJECT_AUDIO_TRACK_ID;
+  return defaultTrackId;
 }
 
 export function hasSoloedAudioTrack(mix: AudioTrackMixMap): boolean {
