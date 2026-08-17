@@ -2,6 +2,17 @@ import {ValueDispatcher} from '../events';
 import {useScene} from '../utils';
 import type {Scene} from './Scene';
 
+/**
+ * Where a registered sound came from.
+ *
+ * @remarks
+ * - `media`: embedded audio of a visual media node (e.g. `Video`). Rendered on
+ *   the auto-populated media-audio lane, always tied to its source node.
+ * - `audio`: a project audio clip authored via the `Audio` node. Rendered on a
+ *   user-managed project audio track, movable between tracks in the editor.
+ */
+export type SoundOrigin = 'media' | 'audio';
+
 export interface SoundSettings {
   audio: string;
   start?: number;
@@ -13,12 +24,22 @@ export interface SoundSettings {
    * The key of the scene node this sound originated from, if any.
    *
    * @remarks
-   * Set by e.g. `Video` when it registers its own embedded audio as a
-   * `Sound`. Lets UI (the timeline's media-audio track) group/link clips
-   * back to the node that produced them, distinguishing them from sounds
-   * registered directly via `sound()`.
+   * Set by `Video`/`Audio` when they register their audio as a `Sound`. Lets
+   * the timeline group/link clips back to the node that produced them, and
+   * gives the editor a stable id to persist per-clip track assignments
+   * against. Sounds registered directly via `sound()` have no key.
    */
   sourceKey?: string;
+  /**
+   * Which timeline lane family this sound belongs to.
+   *
+   * @remarks
+   * Distinguishes auto-populated media audio (`media`) from user-editable
+   * project audio (`audio`). Sounds registered via `sound()` default to
+   * `audio`. Absent on legacy clips, treated as `media` when a `sourceKey` is
+   * present (old `Video` behaviour) and `audio` otherwise.
+   */
+  origin?: SoundOrigin;
 }
 
 export interface Sound extends SoundSettings {
@@ -136,6 +157,7 @@ export class Sounds {
         Math.pow(2, (settings.detune ?? 0) / 1200) *
         (settings.playbackRate ?? 1),
       ...settings,
+      origin: settings.origin ?? (settings.sourceKey ? 'media' : 'audio'),
     };
     this.registeredSounds.push(registered);
     return registered;

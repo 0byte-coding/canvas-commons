@@ -29,7 +29,8 @@ export function useMediaSounds(scenes: readonly Scene[]): MediaSound[] {
       const combined: MediaSound[] = [];
       for (const scene of scenes) {
         for (const sound of scene.sounds.onChanged.current) {
-          if (sound.sourceKey) {
+          const origin = sound.origin ?? (sound.sourceKey ? 'media' : 'audio');
+          if (sound.sourceKey && origin === 'media') {
             combined.push(sound as MediaSound);
           }
         }

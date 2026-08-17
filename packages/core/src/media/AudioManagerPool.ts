@@ -3,6 +3,7 @@ import {Sound} from '../scenes';
 import {AudioManager} from './AudioManager';
 import {AudioResourceManager} from './AudioResourceManager';
 import {
+  AudioTrackAssignments,
   AudioTrackMixMap,
   audioTrackIdForSound,
   resolveAudioMix,
@@ -19,6 +20,7 @@ export class AudioManagerPool {
   private volume: number = 1;
   private paused: boolean = true;
   private trackMix: AudioTrackMixMap = {};
+  private trackAssignments: AudioTrackAssignments = {};
 
   public constructor(
     private readonly logger: Logger,
@@ -52,9 +54,14 @@ export class AudioManagerPool {
     this.applyMix();
   }
 
+  public setTrackAssignments(assignments: AudioTrackAssignments) {
+    this.trackAssignments = assignments;
+    this.applyMix();
+  }
+
   private mixFor(sound: Sound) {
     return resolveAudioMix(
-      audioTrackIdForSound(sound),
+      audioTrackIdForSound(sound, this.trackAssignments),
       this.trackMix,
       this.muted,
       this.volume,

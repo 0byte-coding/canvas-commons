@@ -32,6 +32,21 @@ describe('Sounds', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('defaults origin to audio for keyless sounds and media for keyed ones', () => {
+    const {sounds} = createSounds();
+    const plain = sounds.add({audio: 'a.mp3'});
+    const keyed = sounds.add({audio: 'b.mp3', sourceKey: 'video-1'});
+    const explicit = sounds.add({
+      audio: 'c.mp3',
+      sourceKey: 'audio-1',
+      origin: 'audio',
+    });
+
+    expect(plain.origin).toBe('audio');
+    expect(keyed.origin).toBe('media');
+    expect(explicit.origin).toBe('audio');
+  });
+
   it('drops a broadcast sound from the list when it is removed', () => {
     const {sounds, recalculate} = createSounds();
     const clip = sounds.add({audio: 'a.mp3', sourceKey: 'video-1'});

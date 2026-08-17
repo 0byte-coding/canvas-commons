@@ -22,6 +22,9 @@ describe('audioTrackIdForSound', () => {
     expect(audioTrackIdForSound({sourceKey: 'video-1'})).toBe(
       MEDIA_AUDIO_TRACK_ID,
     );
+    expect(audioTrackIdForSound({sourceKey: 'video-1', origin: 'media'})).toBe(
+      MEDIA_AUDIO_TRACK_ID,
+    );
   });
 
   it('routes plain sounds to the project track', () => {
@@ -29,6 +32,32 @@ describe('audioTrackIdForSound', () => {
     expect(audioTrackIdForSound({sourceKey: undefined})).toBe(
       PROJECT_AUDIO_TRACK_ID,
     );
+  });
+
+  it('routes audio-origin clips to the project track by default', () => {
+    expect(audioTrackIdForSound({sourceKey: 'audio-1', origin: 'audio'})).toBe(
+      PROJECT_AUDIO_TRACK_ID,
+    );
+  });
+
+  it('honors an editor track assignment for audio clips', () => {
+    const assignments = {audioKey: 'sfx'};
+    expect(
+      audioTrackIdForSound(
+        {sourceKey: 'audioKey', origin: 'audio'},
+        assignments,
+      ),
+    ).toBe('sfx');
+  });
+
+  it('ignores assignments for media clips', () => {
+    const assignments = {videoKey: 'sfx'};
+    expect(
+      audioTrackIdForSound(
+        {sourceKey: 'videoKey', origin: 'media'},
+        assignments,
+      ),
+    ).toBe(MEDIA_AUDIO_TRACK_ID);
   });
 });
 

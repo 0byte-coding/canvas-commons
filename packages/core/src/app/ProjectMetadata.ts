@@ -1,4 +1,9 @@
 import {
+  AudioTrack,
+  AudioTrackAssignments,
+  createDefaultAudioTracks,
+} from '../media/trackMix';
+import {
   ColorMetaField,
   EnumMetaField,
   ExporterMetaField,
@@ -22,6 +27,14 @@ function createProjectMetadata(project: Project) {
       audioOffset: new NumberMetaField('audio offset', 0)
         .setPrecision(4)
         .setStep(0.1),
+      audioTracks: new MetaField<AudioTrack[]>(
+        'audio tracks',
+        createDefaultAudioTracks(),
+      ),
+      audioTrackAssignments: new MetaField<AudioTrackAssignments>(
+        'audio track assignments',
+        {},
+      ),
     }),
     preview: new ObjectMetaField('Preview', {
       fps: new NumberMetaField('frame rate', 30)
@@ -58,6 +71,8 @@ export class ProjectMetadata extends ObjectMetaField<
     range: [number, number];
     size: Vector2;
     audioOffset: number;
+    audioTracks: AudioTrack[];
+    audioTrackAssignments: AudioTrackAssignments;
   } {
     return {
       ...this.shared.get(),
@@ -73,6 +88,8 @@ export class ProjectMetadata extends ObjectMetaField<
     range: [number, number];
     size: Vector2;
     audioOffset: number;
+    audioTracks: AudioTrack[];
+    audioTrackAssignments: AudioTrackAssignments;
     exporter: {
       name: string;
       options: unknown;

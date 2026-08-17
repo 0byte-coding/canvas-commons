@@ -1,31 +1,79 @@
-import type {Scene} from '@canvas-commons/core';
+import type {Scene, Sound} from '@canvas-commons/core';
 import clsx from 'clsx';
 import type {JSX} from 'preact';
 import {useLayoutEffect, useMemo, useRef, useState} from 'preact/hooks';
 import {useApplication, useModifiers, useTimelineContext} from '../../contexts';
 import {useScenes, useSharedSettings, useSubscribableValue} from '../../hooks';
 import {MouseButton} from '../../utils';
+import {resolveClipTrackId, useAudioTracks} from './audioTracks';
 import styles from './Timeline.module.scss';
 import {
   DEFAULT_WAVE_HEIGHT,
+  projectLaneId,
   useTrackLayout,
   useWaveHeight,
 } from './trackLayout';
 
 export function AudioTrack() {
+  const {tracks} = useAudioTracks();
+  return (
+    <>
+      {tracks.map((track, index) => (
+        <ProjectAudioLane
+          key={track.id}
+          trackId={track.id}
+          color={track.color}
+          first={index === 0}
+        />
+      ))}
+    </>
+  );
+}
+
+interface ProjectAudioLaneProps {
+  trackId: string;
+  color: string;
+  first: boolean;
+}
+
+function ProjectAudioLane({trackId, color, first}: ProjectAudioLaneProps) {
   const scenes = useScenes();
-  const layoutRef = useTrackLayout<HTMLDivElement>('audio');
-  const {height} = useWaveHeight('audio');
+  const laneId = projectLaneId(trackId);
+  const layoutRef = useTrackLayout<HTMLDivElement>(laneId);
+  const {height} = useWaveHeight(laneId);
+  const {assignments, tracks, assignClip} = useAudioTracks();
+
+  const dropToTrack = (event: JSX.TargetedDragEvent<HTMLDivElement>) => {
+    const sourceKey = event.dataTransfer?.getData('application/x-audio-clip');
+    if (sourceKey) {
+      event.preventDefault();
+      assignClip(sourceKey, trackId);
+    }
+  };
 
   return (
     <div
       ref={layoutRef}
       className={styles.audioTrack}
       style={{height: `${height}px`}}
+      onDragOver={event => {
+        if (event.dataTransfer?.types.includes('application/x-audio-clip')) {
+          event.preventDefault();
+        }
+      }}
+      onDrop={dropToTrack}
     >
-      <MainAudioClip height={height} />
+      {first && <MainAudioClip height={height} />}
       {scenes.map(scene => (
-        <AudioGroup scene={scene} height={height} />
+        <AudioGroup
+          key={scene.name}
+          scene={scene}
+          height={height}
+          trackId={trackId}
+          color={color}
+          assignments={assignments}
+          tracks={tracks}
+        />
       ))}
     </div>
   );
@@ -34,18 +82,45 @@ export function AudioTrack() {
 interface AudioGroupProps {
   scene: Scene;
   height: number;
+  trackId: string;
+  color: string;
+  assignments: Record<string, string>;
+  tracks: {id: string}[];
 }
 
-export function AudioGroup({scene, height}: AudioGroupProps) {
-  const sounds = useSubscribableValue(scene.sounds.onChanged);
+export function AudioGroup({
+  scene,
+  height,
+  trackId,
+  color,
+  assignments,
+  tracks,
+}: AudioGroupProps) {
+  const sounds = useSubscribableValue(scene.sounds.onChanged) as
+    | Sound[]
+    | undefined;
   return (
     <>
-      {/* Media-derived clips (e.g. a Video's own audio) render in their own
-          MediaAudioTrack lane instead, so they aren't duplicated here. */}
       {sounds
-        ?.filter(sound => !sound.sourceKey)
+        ?.filter(sound => (sound.origin ?? 'media') === 'audio')
+        .filter(
+          sound =>
+            resolveClipTrackId(sound.sourceKey, assignments, tracks) ===
+            trackId,
+        )
         .map(sound => (
-          <AudioClip hoverable height={height} {...sound} />
+          <AudioClip
+            key={sound.sourceKey ?? sound.audio}
+            hoverable
+            draggableKey={sound.sourceKey}
+            color={color}
+            height={height}
+            audio={sound.audio}
+            offset={sound.offset}
+            start={sound.start}
+            end={sound.end}
+            realPlaybackRate={sound.realPlaybackRate}
+          />
         ))}
     </>
   );
@@ -116,6 +191,11 @@ export interface AudioClipProps extends JSX.HTMLAttributes<HTMLDivElement> {
   faded?: boolean;
   /** Height of the waveform area, set by the lane's resize handle. */
   height?: number;
+  /**
+   * Stable clip id, enabling drag-to-another-track. When set the clip becomes
+   * draggable and carries this key so the drop target can reassign it.
+   */
+  draggableKey?: string;
 }
 
 export function AudioClip({
@@ -129,6 +209,7 @@ export function AudioClip({
   color = '#fff',
   faded,
   height = DEFAULT_WAVE_HEIGHT,
+  draggableKey,
   style,
   className,
   ...props
@@ -289,9 +370,22 @@ export function AudioClip({
         styles.audioClip,
         hoverable && styles.hoverable,
         editable && styles.editable,
+        draggableKey && styles.draggable,
         className,
       )}
       style={wrapperStyle}
+      draggable={draggableKey !== undefined}
+      onDragStart={
+        draggableKey
+          ? event => {
+              event.dataTransfer?.setData(
+                'application/x-audio-clip',
+                draggableKey,
+              );
+              event.dataTransfer!.effectAllowed = 'move';
+            }
+          : undefined
+      }
       {...props}
     >
       {waveformVisible && waveformWidth > 8 && (

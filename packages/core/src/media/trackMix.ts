@@ -13,6 +13,36 @@ export const MEDIA_AUDIO_TRACK_ID: AudioTrackId = 'media';
 export const PROJECT_AUDIO_TRACK_ID: AudioTrackId = 'project';
 
 /**
+ * Definition of a user-managed project audio track.
+ *
+ * @remarks
+ * Purely visual grouping - tracks carry no audio properties themselves. Which
+ * track a clip sits on is preview/editor-only and does not affect exports.
+ */
+export interface AudioTrack {
+  id: AudioTrackId;
+  name: string;
+  color: string;
+}
+
+/**
+ * Per-clip track assignment, keyed by the clip's stable `sourceKey`.
+ */
+export type AudioTrackAssignments = Record<string, AudioTrackId>;
+
+export const DEFAULT_AUDIO_TRACK_COLOR = '#68abdf';
+
+export function createDefaultAudioTracks(): AudioTrack[] {
+  return [
+    {
+      id: PROJECT_AUDIO_TRACK_ID,
+      name: 'Audio',
+      color: DEFAULT_AUDIO_TRACK_COLOR,
+    },
+  ];
+}
+
+/**
  * Per-track preview mix.
  *
  * @remarks
@@ -66,10 +96,26 @@ export function normalizeTrackMix(mix: unknown): AudioTrackMixMap {
   return normalized;
 }
 
-export function audioTrackIdForSound(sound: {
-  sourceKey?: string;
-}): AudioTrackId {
-  return sound.sourceKey ? MEDIA_AUDIO_TRACK_ID : PROJECT_AUDIO_TRACK_ID;
+/**
+ * Resolve which timeline track a sound belongs to.
+ *
+ * @remarks
+ * Media clips (a `Video`'s embedded audio) always live on the auto-populated
+ * media lane. Project audio clips live on the track the editor assigned them
+ * (looked up by `sourceKey`), falling back to the default project track.
+ */
+export function audioTrackIdForSound(
+  sound: {sourceKey?: string; origin?: 'media' | 'audio'},
+  assignments: AudioTrackAssignments = {},
+): AudioTrackId {
+  const origin = sound.origin ?? (sound.sourceKey ? 'media' : 'audio');
+  if (origin === 'media') {
+    return MEDIA_AUDIO_TRACK_ID;
+  }
+  if (sound.sourceKey && assignments[sound.sourceKey]) {
+    return assignments[sound.sourceKey];
+  }
+  return PROJECT_AUDIO_TRACK_ID;
 }
 
 export function hasSoloedAudioTrack(mix: AudioTrackMixMap): boolean {

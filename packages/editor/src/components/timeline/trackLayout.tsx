@@ -4,28 +4,44 @@ import {useCallback, useContext, useLayoutEffect, useState} from 'preact/hooks';
 import {useStorage} from '../../hooks';
 import {clamp} from '../../utils';
 
-export type TimelineTrackId = 'range' | 'scene' | 'label' | 'media' | 'audio';
-
-export type TrackHeights = Partial<Record<TimelineTrackId, number>>;
+export type FixedTrackId = 'range' | 'scene' | 'label' | 'media';
 
 /**
- * Order the sidebar renders its header rows in, matching the lane order
- * inside the timeline.
+ * A project audio lane's id: the `audio:` prefix plus the metadata track id.
+ * Kept distinct from the fixed lanes so each user-managed track measures and
+ * resizes independently.
  */
-export const TRACK_ORDER: TimelineTrackId[] = [
-  'range',
-  'scene',
-  'label',
-  'audio',
-  'media',
-];
+export type ProjectAudioTrackId = `audio:${string}`;
+
+export type TimelineTrackId = FixedTrackId | ProjectAudioTrackId;
+
+export function projectLaneId(trackId: string): ProjectAudioTrackId {
+  return `audio:${trackId}`;
+}
+
+export function isProjectLaneId(id: string): id is ProjectAudioTrackId {
+  return id.startsWith('audio:');
+}
+
+export function trackIdFromLaneId(id: ProjectAudioTrackId): string {
+  return id.slice('audio:'.length);
+}
+
+export type TrackHeights = Partial<Record<string, number>>;
+
+/**
+ * Fixed lanes bracketing the dynamic project audio lanes. Project audio lanes
+ * are inserted between `label` and `media` in metadata order.
+ */
+export const TRACK_ORDER_HEAD: FixedTrackId[] = ['range', 'scene', 'label'];
+export const TRACK_ORDER_TAIL: FixedTrackId[] = ['media'];
 
 /** Waveform fills the whole lane, so this is the lane height too. */
 export const DEFAULT_WAVE_HEIGHT = 96;
 export const MIN_WAVE_HEIGHT = 8;
 export const MAX_WAVE_HEIGHT = 480;
 
-export type WaveHeights = Partial<Record<TimelineTrackId, number>>;
+export type WaveHeights = Partial<Record<string, number>>;
 
 interface TrackLayout {
   heights: Signal<TrackHeights>;

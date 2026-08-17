@@ -1,0 +1,103 @@
+import {
+  Scene,
+  Sound,
+  SoundOrigin,
+  trackPendingAudioAdjustment,
+  useLogger,
+  useMediaAudioAnalyzer,
+  useScene,
+} from '@canvas-commons/core';
+
+export interface MediaAudioClipConfig {
+  audio: string;
+  start: number;
+  gain: number;
+  playbackRate: number;
+  sourceKey: string;
+  origin: SoundOrigin;
+  normalize: number | false;
+  levelTo: number | false;
+}
+
+export interface MediaAudioClipHandle {
+  clip: Sound;
+  scene: Scene;
+  token: number;
+}
+
+export class MediaAudioClip {
+  private handle: MediaAudioClipHandle | null = null;
+  private measurementToken = 0;
+
+  public register(config: MediaAudioClipConfig): void {
+    this.finalize(() => config.start);
+
+    const scene = useScene();
+    const clip = scene.sounds.add(
+      {
+        audio: config.audio,
+        start: config.start,
+        gain: config.gain,
+        playbackRate: config.playbackRate,
+        sourceKey: config.sourceKey,
+        origin: config.origin,
+      },
+      0,
+    );
+    const token = ++this.measurementToken;
+    this.handle = {clip, scene, token};
+
+    const analyzer = useMediaAudioAnalyzer();
+    const target = config.levelTo !== false ? config.levelTo : config.normalize;
+    const mode = config.levelTo !== false ? 'loudPart' : 'integrated';
+
+    const adjustment = analyzer
+      .hasAudio(config.audio)
+      .then(async hasAudio => {
+        if (!hasAudio) {
+          scene.sounds.remove(clip);
+          if (this.handle?.clip === clip) {
+            this.handle = null;
+          }
+          return;
+        }
+
+        if (target === false) {
+          return;
+        }
+
+        const gainDb = await analyzer.computeNormalizeGain(
+          config.audio,
+          target,
+          mode,
+        );
+        if (this.handle?.clip === clip && this.handle.token === token) {
+          clip.gain = gainDb;
+        }
+      })
+      .catch(e => {
+        useLogger().warn({
+          message: `Could not analyze audio for "${config.audio}".`,
+          remarks: String(e),
+          inspect: config.sourceKey,
+        });
+      });
+    trackPendingAudioAdjustment(adjustment);
+  }
+
+  public finalize(resolveEndTime: () => number): void {
+    this.measurementToken++;
+    const handle = this.handle;
+    if (!handle) {
+      return;
+    }
+    this.handle = null;
+
+    const endTime = resolveEndTime();
+    if (endTime <= (handle.clip.start ?? 0)) {
+      handle.scene.sounds.remove(handle.clip);
+      return;
+    }
+    handle.clip.end = endTime;
+  }
+}

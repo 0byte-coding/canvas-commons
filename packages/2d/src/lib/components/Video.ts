@@ -2,25 +2,21 @@ import {
   BBox,
   DependencyContext,
   PlaybackState,
-  Scene,
   SerializedVector2,
   SignalValue,
   SimpleSignal,
-  Sound,
   clamp,
   gainToDb,
   isReactive,
-  trackPendingAudioAdjustment,
   useLogger,
-  useMediaAudioAnalyzer,
-  useScene,
   useThread,
 } from '@canvas-commons/core';
 import {computed, initial, nodeName, signal} from '../decorators';
 import {DesiredLength} from '../partials';
 import {drawImage} from '../utils';
-import {Rect, RectProps} from './Rect';
 import reactivePlaybackRate from './__logs__/reactive-playback-rate';
+import {MediaAudioClip} from './mediaAudioClip';
+import {Rect, RectProps} from './Rect';
 
 export interface VideoProps extends RectProps {
   /**
@@ -176,9 +172,7 @@ export class Video extends Rect {
   declare protected readonly playing: SimpleSignal<boolean, this>;
 
   private lastTime = -1;
-  private audioClip: Sound | null = null;
-  private audioScene: Scene | null = null;
-  private audioMeasurementToken = 0;
+  private readonly audio = new MediaAudioClip();
 
   public constructor({play, ...props}: VideoProps) {
     super(props);
@@ -466,67 +460,16 @@ export class Video extends Rect {
   }
 
   private registerAudioClip(startTime: number) {
-    this.finalizeAudioClip();
-
-    const src = this.src();
-    const playbackRate = this.playbackRate();
-    const scene = useScene();
-    const clip = scene.sounds.add(
-      {
-        audio: src,
-        start: startTime,
-        gain: gainToDb(this.volume()),
-        playbackRate,
-        sourceKey: this.key,
-      },
-      0,
-    );
-    this.audioClip = clip;
-    this.audioScene = scene;
-
-    const analyzer = useMediaAudioAnalyzer();
-    const token = ++this.audioMeasurementToken;
-
-    const normalize = this.normalize();
-    const levelTo = this.levelTo();
-    const target = levelTo !== false ? levelTo : normalize;
-    const mode = levelTo !== false ? 'loudPart' : 'integrated';
-
-    const adjustment = analyzer
-      .hasAudio(src)
-      .then(async hasAudio => {
-        // A video without an audible audio track should not register a
-        // media-audio clip - doing so leaves an empty waveform in the
-        // timeline's media-audio lane. Removing by clip reference is safe
-        // even after the clip was finalized (e.g. the video paused before
-        // this resolved), and never touches a newer clip. The scene is
-        // captured synchronously since `useScene()` is unavailable here.
-        if (!hasAudio) {
-          scene.sounds.remove(clip);
-          if (this.audioClip === clip) {
-            this.audioClip = null;
-            this.audioScene = null;
-          }
-          return;
-        }
-
-        if (target === false) {
-          return;
-        }
-
-        const gainDb = await analyzer.computeNormalizeGain(src, target, mode);
-        if (this.audioClip === clip && this.audioMeasurementToken === token) {
-          clip.gain = gainDb;
-        }
-      })
-      .catch(e => {
-        useLogger().warn({
-          message: `Could not analyze audio for "${src}".`,
-          remarks: String(e),
-          inspect: this.key,
-        });
-      });
-    trackPendingAudioAdjustment(adjustment);
+    this.audio.register({
+      audio: this.src(),
+      start: startTime,
+      gain: gainToDb(this.volume()),
+      playbackRate: this.playbackRate(),
+      sourceKey: this.key,
+      origin: 'media',
+      normalize: this.normalize(),
+      levelTo: this.levelTo(),
+    });
   }
 
   /**
@@ -534,21 +477,7 @@ export class Video extends Rect {
    * time, or discard it if it ended up covering no duration.
    */
   private finalizeAudioClip() {
-    this.audioMeasurementToken++;
-    const clip = this.audioClip;
-    const scene = this.audioScene;
-    if (!clip || !scene) {
-      return;
-    }
-    this.audioClip = null;
-    this.audioScene = null;
-
-    const endTime = this.currentTimeSafely();
-    if (endTime <= (clip.start ?? 0)) {
-      scene.sounds.remove(clip);
-      return;
-    }
-    clip.end = endTime;
+    this.audio.finalize(() => this.currentTimeSafely());
   }
 
   protected override collectAsyncResources() {

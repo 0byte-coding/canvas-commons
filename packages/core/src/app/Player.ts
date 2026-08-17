@@ -7,6 +7,7 @@ import {
   AudioManager,
   AudioManagerPool,
   AudioResourceManager,
+  AudioTrackAssignments,
   AudioTrackId,
   AudioTrackMix,
   AudioTrackMixMap,
@@ -47,6 +48,7 @@ export interface PlayerSettings {
   fps: number;
   size: Vector2;
   audioOffset: number;
+  audioTrackAssignments?: AudioTrackAssignments;
   resolutionScale: number;
 }
 
@@ -228,6 +230,9 @@ export class Player {
     }
     if (settings.audioOffset !== undefined) {
       this.audio.setOffset(settings.audioOffset);
+    }
+    if (settings.audioTrackAssignments !== undefined) {
+      this.audioPool.setTrackAssignments(settings.audioTrackAssignments);
     }
 
     this.lock.release();

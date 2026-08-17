@@ -1,3 +1,4 @@
+export * from './Audio';
 export * from './Bezier';
 export * from './Camera';
 export * from './Circle';
