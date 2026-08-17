@@ -262,6 +262,13 @@ export interface AudioClipProps extends JSX.HTMLAttributes<HTMLDivElement> {
    * draggable and carries this key so the drop target can reassign it.
    */
   draggableKey?: string;
+  // Extra `Sound` fields callers spread in via `{...sound}`; consumed here so
+  // they don't leak onto the DOM element.
+  gain?: number;
+  detune?: number;
+  playbackRate?: number;
+  sourceKey?: string;
+  origin?: 'media' | 'audio';
 }
 
 export function AudioClip({
@@ -276,6 +283,12 @@ export function AudioClip({
   faded,
   height = DEFAULT_WAVE_HEIGHT,
   draggableKey,
+  // Discard non-DOM `Sound` fields spread in via `{...sound}`.
+  gain: _gain,
+  detune: _detune,
+  playbackRate: _playbackRate,
+  sourceKey: _sourceKey,
+  origin: _origin,
   style,
   className,
   ...props
