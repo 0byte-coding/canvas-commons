@@ -35,6 +35,10 @@ function createProjectMetadata(project: Project) {
         'audio track assignments',
         {},
       ),
+      audioClipOffsets: new MetaField<Record<string, number>>(
+        'audio clip offsets',
+        {},
+      ),
     }),
     preview: new ObjectMetaField('Preview', {
       fps: new NumberMetaField('frame rate', 30)
@@ -73,6 +77,7 @@ export class ProjectMetadata extends ObjectMetaField<
     audioOffset: number;
     audioTracks: AudioTrack[];
     audioTrackAssignments: AudioTrackAssignments;
+    audioClipOffsets: Record<string, number>;
   } {
     return {
       ...this.shared.get(),
@@ -90,6 +95,7 @@ export class ProjectMetadata extends ObjectMetaField<
     audioOffset: number;
     audioTracks: AudioTrack[];
     audioTrackAssignments: AudioTrackAssignments;
+    audioClipOffsets: Record<string, number>;
     exporter: {
       name: string;
       options: unknown;

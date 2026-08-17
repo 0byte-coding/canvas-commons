@@ -1,5 +1,9 @@
 import {EventDispatcher, ValueDispatcher} from '../events';
-import {waitForPendingAudioAdjustments} from '../media';
+import {
+  AudioClipOffsets,
+  applyClipOffsets,
+  waitForPendingAudioAdjustments,
+} from '../media';
 import type {Scene, Sound} from '../scenes';
 import {ReadOnlyTimeEvents} from '../scenes/timeEvents';
 import {clampRemap} from '../tweening';
@@ -17,6 +21,7 @@ export interface RendererSettings extends StageSettings {
   name: string;
   range: [number, number];
   fps: number;
+  audioClipOffsets?: AudioClipOffsets;
   exporter: {
     name: string;
     options: unknown;
@@ -210,7 +215,10 @@ export class Renderer {
     if (signal.aborted) return RendererResult.Aborted;
 
     await waitForPendingAudioAdjustments();
-    const sounds = this.collectSounds();
+    const sounds = applyClipOffsets(
+      this.collectSounds(),
+      settings.audioClipOffsets ?? {},
+    );
     await this.playback.reset();
     if (signal.aborted) return RendererResult.Aborted;
 

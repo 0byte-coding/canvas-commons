@@ -3,6 +3,7 @@ import {
   AudioTrackMixMap,
   MEDIA_AUDIO_TRACK_ID,
   PROJECT_AUDIO_TRACK_ID,
+  applyClipOffsets,
   audioTrackIdForSound,
   hasSoloedAudioTrack,
   normalizeTrackMix,
@@ -58,6 +59,25 @@ describe('audioTrackIdForSound', () => {
         assignments,
       ),
     ).toBe(MEDIA_AUDIO_TRACK_ID);
+  });
+});
+
+describe('applyClipOffsets', () => {
+  it('adds a per-clip offset to the sound offset', () => {
+    const sounds = [
+      {sourceKey: 'a', offset: 1},
+      {sourceKey: 'b', offset: 2},
+    ];
+    const result = applyClipOffsets(sounds, {a: 0.5});
+    expect(result[0].offset).toBe(1.5);
+    expect(result[1].offset).toBe(2);
+  });
+
+  it('leaves keyless and unlisted sounds untouched by reference', () => {
+    const sounds = [{offset: 3}, {sourceKey: 'x', offset: 4}];
+    const result = applyClipOffsets(sounds, {});
+    expect(result[0]).toBe(sounds[0]);
+    expect(result[1]).toBe(sounds[1]);
   });
 });
 

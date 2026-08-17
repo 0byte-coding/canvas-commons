@@ -109,20 +109,86 @@ export function AudioGroup({
             trackId,
         )
         .map(sound => (
-          <AudioClip
+          <ProjectAudioClip
             key={sound.sourceKey ?? sound.audio}
-            hoverable
-            draggableKey={sound.sourceKey}
+            sound={sound}
             color={color}
             height={height}
-            audio={sound.audio}
-            offset={sound.offset}
-            start={sound.start}
-            end={sound.end}
-            realPlaybackRate={sound.realPlaybackRate}
           />
         ))}
     </>
+  );
+}
+
+interface ProjectAudioClipProps {
+  sound: Sound;
+  color: string;
+  height: number;
+}
+
+function ProjectAudioClip({sound, color, height}: ProjectAudioClipProps) {
+  const {meta} = useApplication();
+  const {audioClipOffsets} = useSharedSettings();
+  const modifiers = useModifiers();
+  const {pixelsToSeconds} = useTimelineContext();
+  const [editingOffset, setEditingOffset] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const sourceKey = sound.sourceKey;
+  const savedOffset = sourceKey ? (audioClipOffsets?.[sourceKey] ?? 0) : 0;
+  const fullExtraOffset = savedOffset + editingOffset;
+
+  useLayoutEffect(() => {
+    setEditingOffset(0);
+  }, [savedOffset]);
+
+  const active = modifiers.value.shift && sourceKey !== undefined;
+
+  const persistOffset = (value: number) => {
+    if (!sourceKey) return;
+    const next = {...(audioClipOffsets ?? {})};
+    if (value === 0) {
+      delete next[sourceKey];
+    } else {
+      next[sourceKey] = value;
+    }
+    meta.shared.audioClipOffsets.set(next);
+  };
+
+  return (
+    <AudioClip
+      hoverable
+      editable={active || isEditing}
+      draggableKey={active || isEditing ? undefined : sourceKey}
+      color={color}
+      height={height}
+      audio={sound.audio}
+      offset={sound.offset + fullExtraOffset}
+      start={sound.start}
+      end={sound.end}
+      realPlaybackRate={sound.realPlaybackRate}
+      onPointerDown={e => {
+        if (active && e.button === MouseButton.Left) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setIsEditing(true);
+        }
+      }}
+      onPointerMove={e => {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+          setEditingOffset(editingOffset + pixelsToSeconds(e.movementX));
+        }
+      }}
+      onPointerUp={e => {
+        if (isEditing && e.button === MouseButton.Left) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          persistOffset(fullExtraOffset);
+          setEditingOffset(0);
+          setIsEditing(false);
+        }
+      }}
+    />
   );
 }
 

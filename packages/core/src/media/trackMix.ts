@@ -30,6 +30,25 @@ export interface AudioTrack {
  */
 export type AudioTrackAssignments = Record<string, AudioTrackId>;
 
+/**
+ * Per-clip timeline offset override in seconds, keyed by `sourceKey`.
+ *
+ * @remarks
+ * Added to the clip's authored offset so the editor can nudge a clip along the
+ * timeline (e.g. shift-drag to align audio to video) without editing scene
+ * code. Applied in both preview and export so the alignment holds everywhere.
+ */
+export type AudioClipOffsets = Record<string, number>;
+
+export function applyClipOffsets<
+  T extends {sourceKey?: string; offset: number},
+>(sounds: readonly T[], offsets: AudioClipOffsets): T[] {
+  return sounds.map(sound => {
+    const extra = sound.sourceKey ? offsets[sound.sourceKey] : undefined;
+    return extra ? {...sound, offset: sound.offset + extra} : sound;
+  });
+}
+
 export const DEFAULT_AUDIO_TRACK_COLOR = '#68abdf';
 
 export function createDefaultAudioTracks(): AudioTrack[] {

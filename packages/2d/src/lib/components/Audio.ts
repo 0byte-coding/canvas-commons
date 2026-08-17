@@ -9,10 +9,14 @@ import {
 } from '@canvas-commons/core';
 import {computed, initial, nodeName, signal} from '../decorators';
 import {DesiredLength} from '../partials';
-import {Node, NodeProps} from './Node';
 import {MediaAudioClip} from './mediaAudioClip';
+// Extends Rect (like Video) rather than Node directly: it inherits the same
+// module-load chain, avoiding the Node<->Layout import cycle that breaks when a
+// Node-extending component is evaluated first in the barrel. Audio draws
+// nothing and reports zero size, so the visual props are inert.
+import {Rect, RectProps} from './Rect';
 
-export interface AudioProps extends NodeProps {
+export interface AudioProps extends RectProps {
   /**
    * {@inheritDoc Audio.src}
    */
@@ -45,7 +49,7 @@ export interface AudioProps extends NodeProps {
 }
 
 @nodeName('Audio')
-export class Audio extends Node {
+export class Audio extends Rect {
   private static readonly pool: Record<string, HTMLAudioElement> = {};
 
   /**
@@ -154,7 +158,7 @@ export class Audio extends Node {
     return {x: 0, y: 0};
   }
 
-  protected draw(): void {}
+  protected override draw(): void {}
 
   @computed()
   protected element(): HTMLAudioElement {

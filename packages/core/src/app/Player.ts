@@ -4,6 +4,7 @@ import {
   ValueDispatcher,
 } from '../events';
 import {
+  AudioClipOffsets,
   AudioManager,
   AudioManagerPool,
   AudioResourceManager,
@@ -13,6 +14,7 @@ import {
   AudioTrackMixMap,
   DEFAULT_AUDIO_TRACK_MIX,
   PROJECT_AUDIO_TRACK_ID,
+  applyClipOffsets,
   normalizeTrackMix,
   resolveAudioMix,
 } from '../media';
@@ -49,10 +51,19 @@ export interface PlayerSettings {
   size: Vector2;
   audioOffset: number;
   audioTrackAssignments?: AudioTrackAssignments;
+  audioClipOffsets?: AudioClipOffsets;
   resolutionScale: number;
 }
 
 const MAX_AUDIO_DESYNC = 1 / 50;
+
+function clipOffsetsEqual(a: AudioClipOffsets, b: AudioClipOffsets): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
 
 /**
  * The player logic used by the editor and embeddable player.
@@ -117,6 +128,8 @@ export class Player {
 
   private readonly lock = new Semaphore();
   private readonly trackVolumeBeforeMute = new Map<AudioTrackId, number>();
+  private clipOffsets: AudioClipOffsets = {};
+  private lastRecalculatedSounds: Sound[] = [];
   private startTime = 0;
   private endTime = Infinity;
   private requestId: number | null = null;
@@ -233,6 +246,15 @@ export class Player {
     }
     if (settings.audioTrackAssignments !== undefined) {
       this.audioPool.setTrackAssignments(settings.audioTrackAssignments);
+    }
+    if (
+      settings.audioClipOffsets !== undefined &&
+      !clipOffsetsEqual(settings.audioClipOffsets, this.clipOffsets)
+    ) {
+      this.clipOffsets = settings.audioClipOffsets;
+      await this.audioPool.setupPool(
+        applyClipOffsets(this.lastRecalculatedSounds, this.clipOffsets),
+      );
     }
 
     this.lock.release();
@@ -475,7 +497,10 @@ export class Player {
         for (const scene of this.playback.onScenesRecalculated.current) {
           sounds.push(...scene.sounds.getSounds());
         }
-        await this.audioPool.setupPool(sounds);
+        this.lastRecalculatedSounds = sounds;
+        await this.audioPool.setupPool(
+          applyClipOffsets(sounds, this.clipOffsets),
+        );
 
         this.recalculated.dispatch();
       } catch (e) {
