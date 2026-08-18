@@ -1,6 +1,7 @@
 import {MEDIA_AUDIO_TRACK_ID, type AudioTrackId} from '@canvas-commons/core';
 import clsx from 'clsx';
-import {useEffect, useRef, useState} from 'preact/hooks';
+import {createPortal} from 'preact/compat';
+import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
 import {useApplication} from '../../contexts';
 import {usePlayerState, useStorage} from '../../hooks';
 import {MouseButton} from '../../utils';
@@ -143,6 +144,7 @@ interface ProjectTrackHeaderProps {
   name: string;
   color: string;
   height: number;
+  index: number;
   count: number;
 }
 
@@ -153,10 +155,11 @@ function ProjectTrackHeader({
   name,
   color,
   count,
+  index,
   height,
 }: ProjectTrackHeaderProps) {
   const laneId = projectLaneId(trackId);
-  const {renameTrack, recolorTrack, removeTrack, reorderTrack} =
+  const {addTrack, renameTrack, recolorTrack, removeTrack, reorderTrack} =
     useAudioTracks();
   const [editing, setEditing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -243,6 +246,8 @@ function ProjectTrackHeader({
           x={menu.x}
           y={menu.y}
           canRemove={count > 1}
+          onAddAbove={() => addTrack(index)}
+          onAddBelow={() => addTrack(index + 1)}
           onRemove={() => removeTrack(trackId)}
           onClose={() => setMenu(null)}
         />
@@ -255,6 +260,8 @@ interface TrackContextMenuProps {
   x: number;
   y: number;
   canRemove: boolean;
+  onAddAbove: () => void;
+  onAddBelow: () => void;
   onRemove: () => void;
   onClose: () => void;
 }
@@ -263,10 +270,23 @@ function TrackContextMenu({
   x,
   y,
   canRemove,
+  onAddAbove,
+  onAddBelow,
   onRemove,
   onClose,
 }: TrackContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({x, y});
+
+  useLayoutEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+    const {width, height} = menu.getBoundingClientRect();
+    setPos({
+      x: Math.min(x, window.innerWidth - width - 4),
+      y: Math.min(y, window.innerHeight - height - 4),
+    });
+  }, [x, y]);
 
   useEffect(() => {
     const closeIfOutside = (event: Event) => {
@@ -285,24 +305,32 @@ function TrackContextMenu({
     };
   }, [onClose]);
 
-  return (
+  const item = (label: string, action: () => void, disabled = false) => (
+    <button
+      type="button"
+      className={styles.trackContextItem}
+      disabled={disabled}
+      onClick={() => {
+        action();
+        onClose();
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return createPortal(
     <div
       ref={ref}
       className={styles.trackContextMenu}
-      style={{left: `${x}px`, top: `${y}px`}}
+      style={{left: `${pos.x}px`, top: `${pos.y}px`}}
     >
-      <button
-        type="button"
-        className={styles.trackContextItem}
-        disabled={!canRemove}
-        onClick={() => {
-          onRemove();
-          onClose();
-        }}
-      >
-        Remove track
-      </button>
-    </div>
+      {item('Add track above', onAddAbove)}
+      {item('Add track below', onAddBelow)}
+      <div className={styles.trackContextSeparator} />
+      {item('Remove track', onRemove, !canRemove)}
+    </div>,
+    document.body,
   );
 }
 
@@ -313,7 +341,7 @@ export function TrackSidebar({
 }) {
   const heights = useTrackHeights();
   const scrollTop = useTrackScrollTop();
-  const {tracks, addTrack} = useAudioTracks();
+  const {tracks} = useAudioTracks();
   const [collapsed, setCollapsed] = useStorage(
     'timeline-sidebar-collapsed',
     false,
@@ -362,7 +390,7 @@ export function TrackSidebar({
             );
           })}
 
-          {tracks.map(track => {
+          {tracks.map((track, index) => {
             const laneId = projectLaneId(track.id);
             const height = heights[laneId];
             if (height === undefined) return null;
@@ -373,19 +401,11 @@ export function TrackSidebar({
                 name={track.name}
                 color={track.color}
                 height={height}
+                index={index}
                 count={tracks.length}
               />
             );
           })}
-
-          <button
-            type="button"
-            className={styles.addTrackButton}
-            title="Add audio track"
-            onClick={addTrack}
-          >
-            + Add audio track
-          </button>
 
           {TRACK_ORDER_TAIL.map(id => {
             const height = heights[id];

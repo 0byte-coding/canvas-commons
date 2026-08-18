@@ -210,12 +210,12 @@
 
 .trackContextMenu {
   position: fixed;
-  z-index: 100;
-  min-width: 140px;
+  z-index: 1000;
+  min-width: 150px;
   padding: 4px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  background-color: var(--background-color);
+  background-color: var(--surface-color);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
@@ -243,24 +243,10 @@
   }
 }
 
-.addTrackButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  margin: 2px 8px;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.54);
-  font-size: var(--font-size-small);
-  cursor: pointer;
-
-  &:hover {
-    color: #fff;
-    border-color: var(--surface-color-light);
-    background-color: var(--surface-color-hover);
-  }
+.trackContextSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: var(--border-color);
 }
 
 .trackResize {

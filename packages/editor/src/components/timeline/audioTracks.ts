@@ -24,11 +24,10 @@ function createTrackId(): string {
 export interface UseAudioTracks {
   tracks: AudioTrack[];
   assignments: AudioTrackAssignments;
-  addTrack: () => void;
+  addTrack: (atIndex?: number) => void;
   renameTrack: (id: string, name: string) => void;
   recolorTrack: (id: string, color: string) => void;
   removeTrack: (id: string) => void;
-  moveTrack: (id: string, direction: -1 | 1) => void;
   reorderTrack: (id: string, targetId: string) => void;
   assignClip: (sourceKey: string, trackId: string) => void;
 }
@@ -49,17 +48,20 @@ export function useAudioTracks(): UseAudioTracks {
     [meta],
   );
 
-  const addTrack = useCallback(() => {
-    const color = TRACK_COLORS[tracks.length % TRACK_COLORS.length];
-    setTracks([
-      ...tracks,
-      {
+  const addTrack = useCallback(
+    (atIndex?: number) => {
+      const color = TRACK_COLORS[tracks.length % TRACK_COLORS.length];
+      const track: AudioTrack = {
         id: createTrackId(),
         name: `Audio ${tracks.length + 1}`,
         color: color ?? DEFAULT_AUDIO_TRACK_COLOR,
-      },
-    ]);
-  }, [tracks, setTracks]);
+      };
+      const next = [...tracks];
+      next.splice(atIndex ?? tracks.length, 0, track);
+      setTracks(next);
+    },
+    [tracks, setTracks],
+  );
 
   const renameTrack = useCallback(
     (id: string, name: string) => {
@@ -94,19 +96,6 @@ export function useAudioTracks(): UseAudioTracks {
     [tracks, assignments, setTracks, setAssignments],
   );
 
-  const moveTrack = useCallback(
-    (id: string, direction: -1 | 1) => {
-      const index = tracks.findIndex(track => track.id === id);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= tracks.length) return;
-      const next = [...tracks];
-      const [moved] = next.splice(index, 1);
-      next.splice(target, 0, moved);
-      setTracks(next);
-    },
-    [tracks, setTracks],
-  );
-
   const reorderTrack = useCallback(
     (id: string, targetId: string) => {
       if (id === targetId) return;
@@ -136,7 +125,6 @@ export function useAudioTracks(): UseAudioTracks {
     renameTrack,
     recolorTrack,
     removeTrack,
-    moveTrack,
     reorderTrack,
     assignClip,
   };
