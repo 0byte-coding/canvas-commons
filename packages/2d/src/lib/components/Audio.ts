@@ -239,6 +239,7 @@ export class Audio extends Rect {
   }
 
   private registerAudioClip(startTime: number): void {
+    this.finalizeAudioClip();
     this.audio.register({
       audio: this.src(),
       start: startTime,

@@ -460,6 +460,7 @@ export class Video extends Rect {
   }
 
   private registerAudioClip(startTime: number) {
+    this.finalizeAudioClip();
     this.audio.register({
       audio: this.src(),
       start: startTime,

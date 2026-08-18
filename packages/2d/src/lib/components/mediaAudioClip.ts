@@ -30,8 +30,6 @@ export class MediaAudioClip {
   private measurementToken = 0;
 
   public register(config: MediaAudioClipConfig): void {
-    this.finalize(() => config.start);
-
     const scene = useScene();
     const clip = scene.sounds.add(
       {
