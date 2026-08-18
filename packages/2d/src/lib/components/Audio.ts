@@ -239,7 +239,10 @@ export class Audio extends Rect {
   }
 
   private registerAudioClip(startTime: number): void {
-    this.finalizeAudioClip();
+    // A still-playing clip is released rather than finalized: it represents the
+    // whole file, so tearing it down (e.g. on recalculation) must not truncate
+    // its `end` to the current playhead. Explicit pause/seek still finalize.
+    this.audio.release();
     this.audio.register({
       audio: this.src(),
       start: startTime,
@@ -257,7 +260,7 @@ export class Audio extends Rect {
   }
 
   public override dispose(): void {
-    this.finalizeAudioClip();
+    this.audio.release();
     super.dispose();
   }
 }

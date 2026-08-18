@@ -83,6 +83,12 @@ export class MediaAudioClip {
     trackPendingAudioAdjustment(adjustment);
   }
 
+  /**
+   * Close off the in-progress clip.
+   *
+   * @param resolveEndTime - Resolves the timeline position to stop the clip at.
+   * A clip covering no duration is discarded.
+   */
   public finalize(resolveEndTime: () => number): void {
     this.measurementToken++;
     const handle = this.handle;
@@ -97,5 +103,19 @@ export class MediaAudioClip {
       return;
     }
     handle.clip.end = endTime;
+  }
+
+  /**
+   * Drop the reference to the in-progress clip without truncating it, leaving
+   * its `end` untouched so it plays/draws to the source's natural end.
+   *
+   * @remarks
+   * Used by clips that represent a whole audio file (the `Audio` node): tearing
+   * the node down for a recalculation must not shorten the clip to wherever the
+   * playhead happened to be.
+   */
+  public release(): void {
+    this.measurementToken++;
+    this.handle = null;
   }
 }
