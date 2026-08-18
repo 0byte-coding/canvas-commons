@@ -1,10 +1,10 @@
 import {MEDIA_AUDIO_TRACK_ID, type AudioTrackId} from '@canvas-commons/core';
 import clsx from 'clsx';
-import {useRef, useState} from 'preact/hooks';
+import {useEffect, useRef, useState} from 'preact/hooks';
 import {useApplication} from '../../contexts';
 import {usePlayerState, useStorage} from '../../hooks';
 import {MouseButton} from '../../utils';
-import {VolumeOff, VolumeOn} from '../icons';
+import {DragIndicator, VolumeOff, VolumeOn} from '../icons';
 import {ChevronLeft} from '../icons/ChevronLeft';
 import {ChevronRight} from '../icons/ChevronRight';
 import {useAudioTracks} from './audioTracks';
@@ -143,27 +143,49 @@ interface ProjectTrackHeaderProps {
   name: string;
   color: string;
   height: number;
-  index: number;
   count: number;
 }
+
+const TRACK_DND_TYPE = 'application/x-audio-track';
 
 function ProjectTrackHeader({
   trackId,
   name,
   color,
-  height,
-  index,
   count,
+  height,
 }: ProjectTrackHeaderProps) {
   const laneId = projectLaneId(trackId);
-  const {renameTrack, recolorTrack, removeTrack, moveTrack} = useAudioTracks();
+  const {renameTrack, recolorTrack, removeTrack, reorderTrack} =
+    useAudioTracks();
   const [editing, setEditing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [menu, setMenu] = useState<{x: number; y: number} | null>(null);
 
   return (
     <div
-      className={styles.trackHeader}
+      className={clsx(styles.trackHeader, dragOver && styles.trackDropTarget)}
       data-track-header={laneId}
       style={{height: `${height}px`}}
+      onContextMenu={event => {
+        event.preventDefault();
+        setMenu({x: event.clientX, y: event.clientY});
+      }}
+      onDragOver={event => {
+        if (event.dataTransfer?.types.includes(TRACK_DND_TYPE)) {
+          event.preventDefault();
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={event => {
+        const draggedId = event.dataTransfer?.getData(TRACK_DND_TYPE);
+        setDragOver(false);
+        if (draggedId) {
+          event.preventDefault();
+          reorderTrack(draggedId, trackId);
+        }
+      }}
     >
       <label className={styles.trackAccent} style={{backgroundColor: color}}>
         <input
@@ -175,6 +197,17 @@ function ProjectTrackHeader({
           }
         />
       </label>
+      <div
+        className={styles.trackDragHandle}
+        title="Drag to reorder"
+        draggable
+        onDragStart={event => {
+          event.dataTransfer?.setData(TRACK_DND_TYPE, trackId);
+          event.dataTransfer!.effectAllowed = 'move';
+        }}
+      >
+        <DragIndicator />
+      </div>
       <div className={styles.trackHeaderBody}>
         <div className={styles.trackHeaderTop}>
           {editing ? (
@@ -203,37 +236,72 @@ function ProjectTrackHeader({
           )}
           <MixButtons trackId={trackId} name={name} />
         </div>
-        <div className={styles.trackControls}>
-          <button
-            type="button"
-            className={styles.trackMiniButton}
-            title="Move track up"
-            disabled={index === 0}
-            onClick={() => moveTrack(trackId, -1)}
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            className={styles.trackMiniButton}
-            title="Move track down"
-            disabled={index === count - 1}
-            onClick={() => moveTrack(trackId, 1)}
-          >
-            ▼
-          </button>
-          <button
-            type="button"
-            className={styles.trackMiniButton}
-            title="Remove track"
-            disabled={count <= 1}
-            onClick={() => removeTrack(trackId)}
-          >
-            ✕
-          </button>
-        </div>
         <TrackResizeHandle id={laneId} label={name} />
       </div>
+      {menu && (
+        <TrackContextMenu
+          x={menu.x}
+          y={menu.y}
+          canRemove={count > 1}
+          onRemove={() => removeTrack(trackId)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface TrackContextMenuProps {
+  x: number;
+  y: number;
+  canRemove: boolean;
+  onRemove: () => void;
+  onClose: () => void;
+}
+
+function TrackContextMenu({
+  x,
+  y,
+  canRemove,
+  onRemove,
+  onClose,
+}: TrackContextMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const closeIfOutside = (event: Event) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('pointerdown', closeIfOutside, true);
+    document.addEventListener('contextmenu', closeIfOutside, true);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutside, true);
+      document.removeEventListener('contextmenu', closeIfOutside, true);
+      document.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className={styles.trackContextMenu}
+      style={{left: `${x}px`, top: `${y}px`}}
+    >
+      <button
+        type="button"
+        className={styles.trackContextItem}
+        disabled={!canRemove}
+        onClick={() => {
+          onRemove();
+          onClose();
+        }}
+      >
+        Remove track
+      </button>
     </div>
   );
 }
@@ -294,7 +362,7 @@ export function TrackSidebar({
             );
           })}
 
-          {tracks.map((track, index) => {
+          {tracks.map(track => {
             const laneId = projectLaneId(track.id);
             const height = heights[laneId];
             if (height === undefined) return null;
@@ -305,7 +373,6 @@ export function TrackSidebar({
                 name={track.name}
                 color={track.color}
                 height={height}
-                index={index}
                 count={tracks.length}
               />
             );

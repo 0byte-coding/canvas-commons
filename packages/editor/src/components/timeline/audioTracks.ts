@@ -29,6 +29,7 @@ export interface UseAudioTracks {
   recolorTrack: (id: string, color: string) => void;
   removeTrack: (id: string) => void;
   moveTrack: (id: string, direction: -1 | 1) => void;
+  reorderTrack: (id: string, targetId: string) => void;
   assignClip: (sourceKey: string, trackId: string) => void;
 }
 
@@ -106,6 +107,20 @@ export function useAudioTracks(): UseAudioTracks {
     [tracks, setTracks],
   );
 
+  const reorderTrack = useCallback(
+    (id: string, targetId: string) => {
+      if (id === targetId) return;
+      const from = tracks.findIndex(track => track.id === id);
+      const to = tracks.findIndex(track => track.id === targetId);
+      if (from < 0 || to < 0) return;
+      const next = [...tracks];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      setTracks(next);
+    },
+    [tracks, setTracks],
+  );
+
   const assignClip = useCallback(
     (sourceKey: string, trackId: string) => {
       if (assignments[sourceKey] === trackId) return;
@@ -122,6 +137,7 @@ export function useAudioTracks(): UseAudioTracks {
     recolorTrack,
     removeTrack,
     moveTrack,
+    reorderTrack,
     assignClip,
   };
 }
