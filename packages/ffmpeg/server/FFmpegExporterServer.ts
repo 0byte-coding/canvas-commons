@@ -86,7 +86,7 @@ export class FFmpegExporterServer {
 
     for (let i = 0; i < sounds.length; i++) {
       const sound = sounds[i];
-      this.command.input(sound.audio.slice(1));
+      this.command.input(this.resolveAudioPath(sound.audio));
 
       let trimmed = sound.start ?? 0;
       if (sound.offset < 0) {
@@ -181,6 +181,17 @@ export class FFmpegExporterServer {
     this.promise = new Promise<void>((resolve, reject) => {
       this.command.on('end', () => resolve()).on('error', reject);
     });
+  }
+
+  // Resolve an audio asset URL to a real filesystem path. Assets imported by
+  // absolute path (outside the Vite root) are served under `/@fs/`; everything
+  // else is a project-relative URL.
+  private resolveAudioPath(url: string): string {
+    const clean = url.split('?')[0];
+    if (clean.startsWith('/@fs/')) {
+      return decodeURIComponent(clean.slice('/@fs'.length));
+    }
+    return decodeURIComponent(clean.slice(1));
   }
 
   public async start() {
