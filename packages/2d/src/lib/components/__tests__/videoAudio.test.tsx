@@ -15,6 +15,10 @@ class TestVideo extends Video {
     return this.video();
   }
 
+  public duration(): number {
+    return this.getDuration();
+  }
+
   public syncPlayback(): HTMLVideoElement {
     // The editor consumes the element's play() promise during its render loop;
     // suppress collection here so directly invoking the sync in tests does not
@@ -391,4 +395,49 @@ describe('Video playback sync', () => {
       expect(history.length).toBe(0);
     }),
   );
+});
+
+describe('Video.getDuration', () => {
+  mockScene2D();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  });
+
+  it('returns 0 instead of NaN before metadata loads', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      0,
+    );
+    const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+
+    // Duration is NaN until the element reports metadata; getDuration must not
+    // leak that NaN (which would corrupt `waitFor`/timeline). Suppress promise
+    // collection so the jsdom element's never-resolving readiness listeners do
+    // not leak into other tests.
+    let duration = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      duration = video.duration();
+    });
+    expect(duration).toBe(0);
+  });
+
+  it('returns the real duration once metadata is available', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      4,
+    );
+    const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+    const element = video.element();
+    Object.defineProperty(element, 'duration', {
+      value: 12.5,
+      configurable: true,
+    });
+
+    let duration = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      duration = video.duration();
+    });
+    expect(duration).toBe(12.5);
+  });
 });

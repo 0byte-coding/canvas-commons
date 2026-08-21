@@ -200,7 +200,27 @@ export class Video extends Rect {
   }
 
   public getDuration(): number {
-    return this.video().duration;
+    const video = this.video();
+    // `duration` is only known once the element has loaded its metadata
+    // (readyState >= HAVE_METADATA). Reading it earlier yields NaN, which -
+    // passed on to e.g. `waitFor` - would corrupt the scene's computed
+    // duration. Register a metadata-ready promise so the recalculation retries
+    // once the value is known, and report 0 in the meantime rather than NaN.
+    if (video.readyState < 1 || !isFinite(video.duration)) {
+      DependencyContext.collectPromise(
+        new Promise<void>(resolve => {
+          const listener = () => {
+            resolve();
+            video.removeEventListener('loadedmetadata', listener);
+            video.removeEventListener('durationchange', listener);
+          };
+          video.addEventListener('loadedmetadata', listener);
+          video.addEventListener('durationchange', listener);
+        }),
+      );
+      return 0;
+    }
+    return video.duration;
   }
 
   protected override desiredSize(): SerializedVector2<DesiredLength> {
