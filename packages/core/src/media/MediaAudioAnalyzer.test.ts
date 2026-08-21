@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import * as loudness from './loudness';
 import {MediaAudioAnalyzer} from './MediaAudioAnalyzer';
 
 function stubFetchOk(): void {
@@ -99,5 +100,22 @@ describe('MediaAudioAnalyzer.hasAudio', () => {
     await analyzer.hasAudio('clip.mp4');
 
     expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run the expensive LUFS integration for hasAudio', async () => {
+    stubAudioContext(() => fakeAudioBuffer(0.5));
+    const integrated = vi.spyOn(loudness, 'measureIntegratedLufs');
+    const loudPart = vi.spyOn(loudness, 'measureLoudPartLufs');
+    const analyzer = new MediaAudioAnalyzer();
+
+    await analyzer.hasAudio('clip.mp4');
+
+    expect(integrated).not.toHaveBeenCalled();
+    expect(loudPart).not.toHaveBeenCalled();
+
+    // ...but an explicit loudness measurement still does the work.
+    await analyzer.measure('clip.mp4');
+    expect(integrated).toHaveBeenCalledTimes(1);
+    expect(loudPart).toHaveBeenCalledTimes(1);
   });
 });

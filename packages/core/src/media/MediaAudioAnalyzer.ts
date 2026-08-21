@@ -16,8 +16,27 @@ export interface LoudnessMeasurement {
   peakAmplitude: number;
 }
 
+interface DecodedAudio {
+  channels: Float32Array[];
+  sampleRate: number;
+  peakAmplitude: number;
+}
+
 interface CacheEntry {
-  promise: Promise<LoudnessMeasurement | null>;
+  /**
+   * Decode + peak scan. Enough to answer {@link MediaAudioAnalyzer.hasAudio}
+   * (whether a clip has audible audio) without paying for the much heavier
+   * LUFS integration.
+   */
+  decoded: Promise<DecodedAudio | null>;
+  /**
+   * Full loudness measurement, computed lazily from {@link decoded} and only
+   * when a caller actually needs LUFS values (i.e. normalization is enabled).
+   * Deferring it keeps the common no-normalization path off the multi-second
+   * LUFS integration that long clips would otherwise incur on every timeline
+   * recalculation.
+   */
+  measurement?: Promise<LoudnessMeasurement | null>;
 }
 
 /**
@@ -58,12 +77,32 @@ export class MediaAudioAnalyzer {
    * @returns `null` if the source has no decodable audio track.
    */
   public async measure(source: string): Promise<LoudnessMeasurement | null> {
+    const entry = this.entryFor(source);
+    entry.measurement ??= this.measureFrom(entry.decoded);
+    return entry.measurement;
+  }
+
+  private entryFor(source: string): CacheEntry {
     let entry = this.cache.get(source);
     if (!entry) {
-      entry = {promise: this.decodeAndMeasure(source)};
+      entry = {decoded: this.decode(source)};
       this.cache.set(source, entry);
     }
-    return entry.promise;
+    return entry;
+  }
+
+  private async measureFrom(
+    decoded: Promise<DecodedAudio | null>,
+  ): Promise<LoudnessMeasurement | null> {
+    const audio = await decoded;
+    if (!audio) {
+      return null;
+    }
+    return {
+      integratedLufs: measureIntegratedLufs(audio.channels, audio.sampleRate),
+      loudPartLufs: measureLoudPartLufs(audio.channels, audio.sampleRate),
+      peakAmplitude: audio.peakAmplitude,
+    };
   }
 
   /**
@@ -81,11 +120,8 @@ export class MediaAudioAnalyzer {
    * @param source - URL of the audio/video file to inspect.
    */
   public async hasAudio(source: string): Promise<boolean> {
-    const measurement = await this.measure(source);
-    return (
-      measurement !== null &&
-      measurement.peakAmplitude >= SILENCE_PEAK_THRESHOLD
-    );
+    const decoded = await this.entryFor(source).decoded;
+    return decoded !== null && decoded.peakAmplitude >= SILENCE_PEAK_THRESHOLD;
   }
 
   /**
@@ -118,9 +154,7 @@ export class MediaAudioAnalyzer {
     return this.context;
   }
 
-  private async decodeAndMeasure(
-    source: string,
-  ): Promise<LoudnessMeasurement | null> {
+  private async decode(source: string): Promise<DecodedAudio | null> {
     let response: Response;
     try {
       response = await fetch(source);
@@ -160,11 +194,7 @@ export class MediaAudioAnalyzer {
       }
     }
 
-    return {
-      integratedLufs: measureIntegratedLufs(channels, audioBuffer.sampleRate),
-      loudPartLufs: measureLoudPartLufs(channels, audioBuffer.sampleRate),
-      peakAmplitude,
-    };
+    return {channels, sampleRate: audioBuffer.sampleRate, peakAmplitude};
   }
 }
 
