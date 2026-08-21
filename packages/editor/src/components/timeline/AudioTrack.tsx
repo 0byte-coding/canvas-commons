@@ -291,6 +291,7 @@ export function AudioClip({
   origin: _origin,
   style,
   className,
+  onPointerDown,
   ...props
 }: AudioClipProps) {
   // The waveform is drawn symmetrically around a center line, so the canvas
@@ -454,6 +455,19 @@ export function AudioClip({
       )}
       style={wrapperStyle}
       draggable={draggableKey !== undefined}
+      onPointerDown={event => {
+        // Keep the press from reaching the timeline surface, which would
+        // otherwise capture the pointer and scrub the playhead - stealing the
+        // gesture before the native drag-and-drop can start. Mirrors how the
+        // timeline Label swallows its own pointerdown. `preventDefault` is
+        // intentionally omitted for draggable clips: it would suppress the
+        // element's `dragstart`. Editable (offset-dragging) clips still get
+        // their own handler via `onPointerDown` below.
+        if (draggableKey !== undefined) {
+          event.stopPropagation();
+        }
+        onPointerDown?.(event);
+      }}
       onDragStart={
         draggableKey
           ? event => {
