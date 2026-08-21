@@ -18,6 +18,7 @@ import {
   applyClipOffsets,
   normalizeTrackMix,
   resolveAudioMix,
+  waitForPendingAudioAdjustments,
 } from '../media';
 import {Scene, Sound} from '../scenes';
 import {EditableTimeEvents} from '../scenes/timeEvents';
@@ -499,6 +500,14 @@ export class Player {
       try {
         await this.playback.recalculate();
         this.duration.current = this.playback.frame;
+
+        // Recalculation only kicks off async loudness measurements (normalize /
+        // levelTo); the resulting gain lands on each `Sound` later. Wait for
+        // those to settle before snapshotting sounds into the pool, otherwise
+        // the first playback after a fresh load uses the un-normalized gain
+        // (the measurement is only cached - and thus applied in time - once the
+        // code is saved again).
+        await waitForPendingAudioAdjustments();
 
         const sounds: Sound[] = [];
         for (const scene of this.playback.onScenesRecalculated.current) {
