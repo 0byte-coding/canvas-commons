@@ -1,4 +1,5 @@
 import {
+  DependencyContext,
   Sound,
   useMediaAudioAnalyzer,
   useScene,
@@ -12,6 +13,15 @@ import {mockScene2D} from './mockScene2D';
 class TestVideo extends Video {
   public element(): HTMLVideoElement {
     return this.video();
+  }
+
+  public syncPlayback(): HTMLVideoElement {
+    // The editor consumes the element's play() promise during its render loop;
+    // suppress collection here so directly invoking the sync in tests does not
+    // leak that resolved-but-unconsumed promise across cases.
+    return DependencyContext.collectingPromisesSuppressed(() =>
+      this.fastSeekedVideo(),
+    );
   }
 }
 
@@ -249,4 +259,136 @@ describe('Video audio', () => {
     expect(firstClip!.gain).toBe(0);
     expect(spy).toHaveBeenCalledTimes(2);
   });
+});
+
+describe('Video playback sync', () => {
+  mockScene2D();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      4,
+    );
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    // jsdom never dispatches `seeked`, so a seek that reports `seeking` would
+    // register a promise that nothing resolves and leaks across tests.
+    vi.spyOn(HTMLMediaElement.prototype, 'seeking', 'get').mockReturnValue(
+      false,
+    );
+  });
+
+  function trackCurrentTime(element: HTMLVideoElement): number[] {
+    const history: number[] = [];
+    let value = 0;
+    Object.defineProperty(element, 'currentTime', {
+      configurable: true,
+      get: () => value,
+      set: (next: number) => {
+        value = next;
+        history.push(next);
+      },
+    });
+    if ('fastSeek' in element) {
+      // Route fastSeek through the same setter so both paths are observable.
+      (element as unknown as {fastSeek: (t: number) => void}).fastSeek = (
+        t: number,
+      ) => {
+        value = t;
+        history.push(t);
+      };
+    }
+    return history;
+  }
+
+  it(
+    'never seeks the element backward when the editor lags behind real time',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+      const element = makeReady(video, 10);
+      const history = trackCurrentTime(element);
+
+      // Editor renders at half real-time: wall clock advances 2s per animation
+      // second, so the animation clock trails and a free-running element would
+      // race ahead and get yanked back (the flashing).
+      let wall = 0;
+      const nowSpy = vi
+        .spyOn(performance, 'now')
+        .mockImplementation(() => wall * 1000);
+
+      video.play();
+      for (let i = 0; i < 30; i++) {
+        wall += 2 / 30;
+        yield* waitFor(1 / 30);
+        video.syncPlayback();
+      }
+      nowSpy.mockRestore();
+      video.pause();
+
+      expect(history.length).toBeGreaterThan(0);
+      for (let i = 1; i < history.length; i++) {
+        expect(history[i]).toBeGreaterThanOrEqual(history[i - 1]);
+      }
+    }),
+  );
+
+  it(
+    'slaves the element to the animation clock while lagging',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+      const element = makeReady(video, 10);
+      trackCurrentTime(element);
+
+      let wall = 0;
+      const nowSpy = vi
+        .spyOn(performance, 'now')
+        .mockImplementation(() => wall * 1000);
+
+      video.play();
+      for (let i = 0; i < 10; i++) {
+        wall += 2 / 30;
+        yield* waitFor(1 / 30);
+        video.syncPlayback();
+      }
+      const expectedTime = video.getCurrentTime();
+      nowSpy.mockRestore();
+      video.pause();
+
+      // While lagging the element is driven straight from the animation clock,
+      // so its displayed time tracks the animation time exactly.
+      expect(element.currentTime).toBeCloseTo(expectedTime, 3);
+    }),
+  );
+
+  it(
+    'defers to native playback when the editor keeps up with real time',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+      const element = makeReady(video, 10);
+      const history = trackCurrentTime(element);
+
+      let wall = 0;
+      const nowSpy = vi
+        .spyOn(performance, 'now')
+        .mockImplementation(() => wall * 1000);
+
+      // A real element advances its own currentTime while playing; emulate that
+      // so keep-up mode never trips the large-drift correction.
+      video.play();
+      for (let i = 0; i < 30; i++) {
+        wall += 1 / 30;
+        (element as unknown as {currentTime: number}).currentTime =
+          video.getCurrentTime();
+        history.length = 0;
+        yield* waitFor(1 / 30);
+        video.syncPlayback();
+      }
+      nowSpy.mockRestore();
+      video.pause();
+
+      // Keeping up means we do not deterministically seek every frame; the last
+      // frame's sync should not have issued a per-frame seek.
+      expect(history.length).toBe(0);
+    }),
+  );
 });

@@ -172,6 +172,9 @@ export class Video extends Rect {
   declare protected readonly playing: SimpleSignal<boolean, this>;
 
   private lastTime = -1;
+  private lastWallClock = -1;
+  private lastAnimationTime = -1;
+  private laggingBehind = false;
   private readonly audio = new MediaAudioClip();
 
   public constructor({play, ...props}: VideoProps) {
@@ -284,22 +287,48 @@ export class Video extends Rect {
       return video;
     }
 
-    const playing =
+    const wantPlaying =
       this.playing() && time < video.duration && video.playbackRate > 0;
+
+    // A native <video> element advances in wall-clock time, whereas the editor
+    // advances one animation frame per render tick. When the editor renders
+    // slower than real time the animation clock trails the element; snapping
+    // the element back to that clock replays already-shown frames, which is the
+    // "flashing"/stutter. Compare how much the animation clock advanced against
+    // how much wall-clock time elapsed to detect this, and while lagging drive
+    // the element deterministically from the animation clock instead of letting
+    // it free-run ahead.
+    const rate = video.playbackRate || 1;
+    const wallClock = performance.now() / 1000;
+    if (this.lastWallClock >= 0 && this.lastAnimationTime >= 0) {
+      const wallDelta = wallClock - this.lastWallClock;
+      const animationDelta = (time - this.lastAnimationTime) / rate;
+      this.laggingBehind = wallDelta > 0 && animationDelta < wallDelta * 0.85;
+    }
+    this.lastWallClock = wallClock;
+    this.lastAnimationTime = time;
+
+    const playing = wantPlaying && !this.laggingBehind;
     if (playing) {
       if (video.paused) {
         DependencyContext.collectPromise(video.play());
       }
-    } else {
-      if (!video.paused) {
-        video.pause();
-      }
+    } else if (!video.paused) {
+      video.pause();
     }
 
-    if (Math.abs(video.currentTime - time) > 0.2) {
+    if (playing) {
+      if (Math.abs(video.currentTime - time) > 0.2) {
+        this.setCurrentTime(time);
+      }
+    } else if (Math.abs(video.currentTime - time) > 0.2) {
       this.setCurrentTime(time);
-    } else if (!playing) {
+    } else if (typeof video.fastSeek === 'function') {
+      video.fastSeek(time);
+      this.lastTime = time;
+    } else {
       video.currentTime = time;
+      this.lastTime = time;
     }
 
     return video;
@@ -393,20 +422,29 @@ export class Video extends Rect {
     const offset = this.time();
     const playbackRate = this.playbackRate();
     this.playing(true);
+    this.resetPlaybackSync();
     this.time(() => this.clampTime(offset + (time() - start) * playbackRate));
     this.registerAudioClip(offset);
+  }
+
+  private resetPlaybackSync() {
+    this.lastWallClock = -1;
+    this.lastAnimationTime = -1;
+    this.laggingBehind = false;
   }
 
   public pause() {
     this.playing(false);
     this.time.save();
     this.video().pause();
+    this.resetPlaybackSync();
     this.finalizeAudioClip();
   }
 
   public seek(time: number) {
     const playing = this.playing();
     this.finalizeAudioClip();
+    this.resetPlaybackSync();
     this.time(this.clampTime(time));
     if (playing) {
       this.play();
