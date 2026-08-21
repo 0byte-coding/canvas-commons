@@ -293,106 +293,60 @@ describe('Video playback sync', () => {
         history.push(next);
       },
     });
-    if ('fastSeek' in element) {
-      // Route fastSeek through the same setter so both paths are observable.
-      (element as unknown as {fastSeek: (t: number) => void}).fastSeek = (
-        t: number,
-      ) => {
-        value = t;
-        history.push(t);
-      };
-    }
     return history;
   }
 
   it(
-    'never seeks the element backward when the editor lags behind real time',
+    'does not seek the element every frame while playing',
     generatorTest(function* () {
       const video = (<TestVideo src="clip.mp4" />) as TestVideo;
       const element = makeReady(video, 10);
       const history = trackCurrentTime(element);
-
-      // Editor renders at half real-time: wall clock advances 2s per animation
-      // second, so the animation clock trails and a free-running element would
-      // race ahead and get yanked back (the flashing).
-      let wall = 0;
-      const nowSpy = vi
-        .spyOn(performance, 'now')
-        .mockImplementation(() => wall * 1000);
-
-      video.play();
-      for (let i = 0; i < 30; i++) {
-        wall += 2 / 30;
-        yield* waitFor(1 / 30);
-        video.syncPlayback();
-      }
-      nowSpy.mockRestore();
-      video.pause();
-
-      expect(history.length).toBeGreaterThan(0);
-      for (let i = 1; i < history.length; i++) {
-        expect(history[i]).toBeGreaterThanOrEqual(history[i - 1]);
-      }
-    }),
-  );
-
-  it(
-    'slaves the element to the animation clock while lagging',
-    generatorTest(function* () {
-      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
-      const element = makeReady(video, 10);
-      trackCurrentTime(element);
-
-      let wall = 0;
-      const nowSpy = vi
-        .spyOn(performance, 'now')
-        .mockImplementation(() => wall * 1000);
-
-      video.play();
-      for (let i = 0; i < 10; i++) {
-        wall += 2 / 30;
-        yield* waitFor(1 / 30);
-        video.syncPlayback();
-      }
-      const expectedTime = video.getCurrentTime();
-      nowSpy.mockRestore();
-      video.pause();
-
-      // While lagging the element is driven straight from the animation clock,
-      // so its displayed time tracks the animation time exactly.
-      expect(element.currentTime).toBeCloseTo(expectedTime, 3);
-    }),
-  );
-
-  it(
-    'defers to native playback when the editor keeps up with real time',
-    generatorTest(function* () {
-      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
-      const element = makeReady(video, 10);
-      const history = trackCurrentTime(element);
-
-      let wall = 0;
-      const nowSpy = vi
-        .spyOn(performance, 'now')
-        .mockImplementation(() => wall * 1000);
 
       // A real element advances its own currentTime while playing; emulate that
-      // so keep-up mode never trips the large-drift correction.
+      // so it stays in sync and never trips the large-drift correction.
       video.play();
       for (let i = 0; i < 30; i++) {
-        wall += 1 / 30;
         (element as unknown as {currentTime: number}).currentTime =
           video.getCurrentTime();
         history.length = 0;
         yield* waitFor(1 / 30);
         video.syncPlayback();
       }
-      nowSpy.mockRestore();
       video.pause();
 
-      // Keeping up means we do not deterministically seek every frame; the last
-      // frame's sync should not have issued a per-frame seek.
+      // Seeking a playing element every frame leaves it perpetually mid-seek,
+      // so `drawImage` samples blank frames and the video blinks. While it
+      // tracks the animation clock we must not issue any per-frame seek.
       expect(history.length).toBe(0);
+    }),
+  );
+
+  it(
+    'corrects the element only when it drifts far from the animation clock',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+      const element = makeReady(video, 10);
+
+      video.play();
+      yield* waitFor(1 / 30);
+
+      // Element sitting within tolerance: no correction.
+      (element as unknown as {currentTime: number}).currentTime =
+        video.getCurrentTime();
+      const history = trackCurrentTime(element);
+      video.syncPlayback();
+      expect(history.length).toBe(0);
+
+      // Element drifted far ahead (editor lagged): a single correction fires.
+      (element as unknown as {currentTime: number}).currentTime =
+        video.getCurrentTime() + 1;
+      history.length = 0;
+      yield* waitFor(1 / 30);
+      video.syncPlayback();
+      expect(history.length).toBeGreaterThan(0);
+
+      video.pause();
     }),
   );
 });
