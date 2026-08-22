@@ -23,6 +23,7 @@ export interface FFmpegExporterSettings extends RendererSettings {
   duration: number;
 
   fastStart: boolean;
+  audioOnly: boolean;
   includeAudio: boolean;
   audioSampleRate: number;
 }
@@ -52,6 +53,7 @@ export class FFmpegExporterServer {
   private readonly stream: ImageStream;
   private readonly command: ffmpeg.FfmpegCommand;
   private readonly promise: Promise<void>;
+  private readonly audioOnly: boolean;
 
   public constructor(
     settings: FFmpegExporterSettings,
@@ -64,12 +66,19 @@ export class FFmpegExporterServer {
     this.stream = new ImageStream(size);
     this.command = ffmpeg();
 
-    // Input image sequence
-    this.command
-      .input(this.stream)
-      .inputFormat('rawvideo')
-      .inputOptions(['-pix_fmt rgba', '-s:v', `${size.x}x${size.y}`])
-      .inputFps(settings.fps);
+    const audioOnly = settings.audioOnly === true;
+    this.audioOnly = audioOnly;
+
+    // Input image sequence. Skipped for audio-only exports, where no frames are
+    // rendered at all; this also shifts the audio inputs down to start at 0.
+    if (!audioOnly) {
+      this.command
+        .input(this.stream)
+        .inputFormat('rawvideo')
+        .inputOptions(['-pix_fmt rgba', '-s:v', `${size.x}x${size.y}`])
+        .inputFps(settings.fps);
+    }
+    const audioInputBase = audioOnly ? 0 : 1;
 
     // Input audio
     const sounds = [...settings.sounds];
@@ -169,15 +178,16 @@ export class FFmpegExporterServer {
         });
       }
 
+      const inputIndex = i + audioInputBase;
       if (filters.length > 0) {
         filterSpec.push({
-          inputs: `${i + 1}:a`,
+          inputs: `${inputIndex}:a`,
           filter: formatFilters(filters),
-          outputs: `a${i + 1}`,
+          outputs: `a${inputIndex}`,
         });
-        streams.push(`a${i + 1}`);
+        streams.push(`a${inputIndex}`);
       } else {
-        streams.push(`${i + 1}:a`);
+        streams.push(`${inputIndex}:a`);
       }
     }
 
@@ -192,20 +202,30 @@ export class FFmpegExporterServer {
           outputs: 'a',
         },
       ]);
-      this.command.outputOptions(['-map 0:v', '-map [a]']);
+      this.command.outputOptions(
+        audioOnly ? ['-map [a]'] : ['-map 0:v', '-map [a]'],
+      );
     }
 
-    // Output settings
-    this.command
-      .output(path.join(this.config.output, `${settings.name}.mp4`))
-      .outputOptions([
-        '-pix_fmt yuv420p',
-        `-t ${settings.duration / settings.fps}`,
-      ])
-      .outputFps(settings.fps)
-      .size(`${size.x}x${size.y}`);
-    if (settings.fastStart) {
-      this.command.outputOptions(['-movflags +faststart']);
+    const duration = settings.duration / settings.fps;
+    if (audioOnly) {
+      // Audio-only output: a standalone track capped at the scene duration.
+      this.command
+        .output(path.join(this.config.output, `${settings.name}.m4a`))
+        .outputOptions(['-vn', `-t ${duration}`]);
+      if (settings.fastStart) {
+        this.command.outputOptions(['-movflags +faststart']);
+      }
+    } else {
+      // Output settings
+      this.command
+        .output(path.join(this.config.output, `${settings.name}.mp4`))
+        .outputOptions(['-pix_fmt yuv420p', `-t ${duration}`])
+        .outputFps(settings.fps)
+        .size(`${size.x}x${size.y}`);
+      if (settings.fastStart) {
+        this.command.outputOptions(['-movflags +faststart']);
+      }
     }
 
     this.promise = new Promise<void>((resolve, reject) => {
@@ -237,7 +257,9 @@ export class FFmpegExporterServer {
   }
 
   public async end(result: RendererResult) {
-    this.stream.pushImage(null);
+    if (!this.audioOnly) {
+      this.stream.pushImage(null);
+    }
     if (result === 1) {
       try {
         this.command.kill('SIGKILL');

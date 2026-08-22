@@ -60,6 +60,7 @@ export class FFmpegExporterClient implements Exporter {
   public static meta(project: Project): MetaField<any> {
     return new ObjectMetaField(this.displayName, {
       fastStart: new BoolMetaField('fast start', true),
+      audioOnly: new BoolMetaField('audio only', false),
       includeAudio: new BoolMetaField('include audio', true).disable(
         !project.audio,
       ),
@@ -89,6 +90,11 @@ export class FFmpegExporterClient implements Exporter {
     private readonly project: Project,
     private readonly settings: RendererSettings,
   ) {}
+
+  public get skipFrames(): boolean {
+    const options = this.settings.exporter.options as FFmpegExporterOptions;
+    return options.audioOnly === true;
+  }
 
   public async start(sounds: Sound[], duration: number): Promise<void> {
     const options = this.settings.exporter.options as FFmpegExporterOptions;

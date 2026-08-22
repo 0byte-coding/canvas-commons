@@ -234,29 +234,36 @@ export class Renderer {
     let result = RendererResult.Success;
     try {
       this.estimator.reset(1 / (to - from));
-      await this.exportFrame(signal);
-      this.estimator.update(clampRemap(from, to, 0, 1, this.playback.frame));
-
-      if (signal.aborted) {
-        result = RendererResult.Aborted;
+      // Audio-only (and similar) exporters don't need any rendered frames; the
+      // sounds and duration were already collected above. Skip the frame loop
+      // entirely instead of rendering every frame just to discard it.
+      if (this.exporter.skipFrames) {
+        this.estimator.update(1);
       } else {
-        let finished = false;
-        while (!finished) {
-          await this.playback.progress();
-          await this.exportFrame(signal);
-          this.estimator.update(
-            clampRemap(from, to, 0, 1, this.playback.frame),
-          );
-          if (performance.now() - lastRefresh > 1 / 30) {
-            lastRefresh = performance.now();
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-          if (this.playback.finished || this.playback.frame >= to) {
-            finished = true;
-          }
-          if (signal.aborted) {
-            result = RendererResult.Aborted;
-            finished = true;
+        await this.exportFrame(signal);
+        this.estimator.update(clampRemap(from, to, 0, 1, this.playback.frame));
+
+        if (signal.aborted) {
+          result = RendererResult.Aborted;
+        } else {
+          let finished = false;
+          while (!finished) {
+            await this.playback.progress();
+            await this.exportFrame(signal);
+            this.estimator.update(
+              clampRemap(from, to, 0, 1, this.playback.frame),
+            );
+            if (performance.now() - lastRefresh > 1 / 30) {
+              lastRefresh = performance.now();
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            if (this.playback.finished || this.playback.frame >= to) {
+              finished = true;
+            }
+            if (signal.aborted) {
+              result = RendererResult.Aborted;
+              finished = true;
+            }
           }
         }
       }

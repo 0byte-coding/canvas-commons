@@ -57,6 +57,18 @@ export interface Exporter {
   configuration?(): Promise<RendererSettings | void>;
 
   /**
+   * Whether the frame loop can be skipped entirely.
+   *
+   * @remarks
+   * When `true`, the renderer only recalculates the timeline (to collect
+   * sounds and the duration) and then calls `start()`/`stop()` without
+   * rendering or handing off any frames. Used by audio-only exports, where the
+   * visual output is not needed and rendering every frame would be pointlessly
+   * slow.
+   */
+  readonly skipFrames?: boolean;
+
+  /**
    * Begin the rendering process.
    *
    * @remarks
