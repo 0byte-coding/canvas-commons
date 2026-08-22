@@ -224,7 +224,11 @@ export abstract class GeneratorScene<T>
     // would otherwise be baked into the timeline. When that happens, retry the
     // pass a bounded number of times so the resolved value is picked up,
     // instead of caching a degenerate (e.g. zero-length) duration.
-    const maxAttempts = 10;
+    //
+    // The limit is generous: several large media sources loading their
+    // metadata over a slow connection may each need their own pass to settle,
+    // and giving up early would bake in a truncated timeline.
+    const maxAttempts = 50;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       this.recalcHadPendingResources = false;
       this.recalculating = true;

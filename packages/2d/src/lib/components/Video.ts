@@ -305,9 +305,12 @@ export class Video extends Rect {
     let video = Video.pool[key];
     if (!video) {
       video = document.createElement('video');
-      video.src = src;
+      // Ensure the browser fetches metadata eagerly instead of deferring it,
+      // so a duration read during recalculation settles promptly.
+      video.preload = 'auto';
       video.volume = 0;
       video.muted = true;
+      video.src = src;
       Video.pool[key] = video;
     }
     return video;
