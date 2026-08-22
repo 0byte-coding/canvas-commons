@@ -69,6 +69,10 @@ export interface VideoProps extends RectProps {
 @nodeName('Video')
 export class Video extends Rect {
   private static readonly pool: Record<string, HTMLVideoElement> = {};
+  // Resolved durations keyed by source. Once a source's metadata has loaded,
+  // its duration is remembered so later recalculations (which recreate the
+  // element or race against not-yet-ready metadata) never collapse back to 0.
+  private static readonly durationCache: Map<string, number> = new Map();
 
   /**
    * The source of this video.
@@ -225,16 +229,37 @@ export class Video extends Rect {
   }
 
   public getDuration(): number {
-    const video = this.video();
+    const src = this.src();
+    // Reading the duration only needs metadata, not full playback readiness.
+    // Access the pooled element directly instead of through `video()`, which
+    // would register a `canplay` dependency and make the recalculation wait for
+    // the whole clip to buffer before the duration could ever settle.
+    const video = this.metadataElement();
     // `duration` is only known once the element has loaded its metadata
     // (readyState >= HAVE_METADATA). Reading it earlier yields NaN, which -
     // passed on to e.g. `waitFor` - would corrupt the scene's computed
     // duration. Register a metadata-ready promise so the recalculation retries
     // once the value is known, and report 0 in the meantime rather than NaN.
     if (video.readyState < 1 || !isFinite(video.duration)) {
+      // A previously resolved duration for the same source survives element
+      // recreation and readiness races: reuse it so a scene with several
+      // sequential videos doesn't collapse the ones whose element happens not
+      // to be ready on a given recalculation pass.
+      const cached = Video.durationCache.get(src);
+      if (cached !== undefined) {
+        return cached;
+      }
       DependencyContext.collectPromise(
         new Promise<void>(resolve => {
           const listener = () => {
+            // Record the resolved duration as soon as metadata arrives. Large
+            // offscreen videos may have their readiness reset by the browser
+            // between recalculation passes; caching here ensures the value
+            // survives so the scene duration doesn't collapse to the clips that
+            // happen to still be ready on the final pass.
+            if (isFinite(video.duration)) {
+              Video.durationCache.set(src, video.duration);
+            }
             resolve();
             video.removeEventListener('loadedmetadata', listener);
             video.removeEventListener('durationchange', listener);
@@ -245,6 +270,7 @@ export class Video extends Rect {
       );
       return 0;
     }
+    Video.durationCache.set(src, video.duration);
     return video.duration;
   }
 
@@ -273,8 +299,7 @@ export class Video extends Rect {
     return this.clampTime(this.time()) / this.video().duration;
   }
 
-  @computed()
-  protected video(): HTMLVideoElement {
+  private metadataElement(): HTMLVideoElement {
     const src = this.src();
     const key = `${this.key}/${src}`;
     let video = Video.pool[key];
@@ -285,6 +310,12 @@ export class Video extends Rect {
       video.muted = true;
       Video.pool[key] = video;
     }
+    return video;
+  }
+
+  @computed()
+  protected video(): HTMLVideoElement {
+    const video = this.metadataElement();
 
     if (video.readyState < 2) {
       DependencyContext.collectPromise(

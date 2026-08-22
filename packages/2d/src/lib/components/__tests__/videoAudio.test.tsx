@@ -441,4 +441,63 @@ describe('Video.getDuration', () => {
     });
     expect(duration).toBe(12.5);
   });
+
+  it('reuses a previously resolved duration when the element is not ready', () => {
+    const ready = vi
+      .spyOn(HTMLMediaElement.prototype, 'readyState', 'get')
+      .mockReturnValue(4);
+    const video = (<TestVideo src="cached-clip.mp4" />) as TestVideo;
+    const element = video.element();
+    Object.defineProperty(element, 'duration', {
+      value: 42,
+      configurable: true,
+    });
+
+    let first = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      first = video.duration();
+    });
+    expect(first).toBe(42);
+
+    // The element becomes not-ready again (mirroring a torn-down/reloading
+    // pooled element during a later recalculation). A fresh node for the same
+    // source must still report the cached duration instead of collapsing to 0.
+    ready.mockReturnValue(0);
+    const other = (<TestVideo src="cached-clip.mp4" />) as TestVideo;
+    let second = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      second = other.duration();
+    });
+    expect(second).toBe(42);
+  });
+
+  it('caches the duration once metadata loads for a not-ready element', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      0,
+    );
+    const video = (<TestVideo src="late-clip.mp4" />) as TestVideo;
+    const element = video.element();
+    Object.defineProperty(element, 'duration', {
+      value: 99,
+      configurable: true,
+    });
+
+    let first = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      first = video.duration();
+    });
+    // Not ready yet: reports 0 and registers a metadata listener.
+    expect(first).toBe(0);
+
+    // Metadata arrives; the listener records the duration in the cache even
+    // though the element is still reported as not-ready.
+    element.dispatchEvent(new Event('loadedmetadata'));
+
+    const other = (<TestVideo src="late-clip.mp4" />) as TestVideo;
+    let second = NaN;
+    DependencyContext.collectingPromisesSuppressed(() => {
+      second = other.duration();
+    });
+    expect(second).toBe(99);
+  });
 });
