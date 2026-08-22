@@ -117,8 +117,12 @@ export class FFmpegExporterServer {
         });
       }
 
-      const fadeIn = sound.fadeIn ?? 0;
-      const fadeOut = sound.fadeOut ?? 0;
+      // Fades run before asetrate/adelay, so their positions are in source
+      // seconds. The user specifies fades in scene (wall-clock) seconds, so
+      // scale by the playback rate.
+      const rate = sound.realPlaybackRate;
+      const fadeIn = (sound.fadeIn ?? 0) * rate;
+      const fadeOut = (sound.fadeOut ?? 0) * rate;
       if (fadeIn > 0) {
         filters.push({
           filter: 'afade',
@@ -126,8 +130,15 @@ export class FFmpegExporterServer {
           options: {t: 'in', st: 0, d: fadeIn},
         });
       }
-      if (fadeOut > 0 && sound.end !== undefined) {
-        const clipDuration = sound.end - trimmed;
+      if (fadeOut > 0) {
+        // Source-timeline length of the clip. With an explicit end use it;
+        // otherwise the sound plays until the scene ends, so anchor the fade to
+        // the scene's output duration relative to where the clip starts.
+        const sceneEnd = settings.duration / settings.fps;
+        const clipDuration =
+          sound.end !== undefined
+            ? sound.end - trimmed
+            : (sceneEnd - Math.max(0, sound.offset)) * rate;
         const start = Math.max(0, clipDuration - fadeOut);
         filters.push({
           filter: 'afade',

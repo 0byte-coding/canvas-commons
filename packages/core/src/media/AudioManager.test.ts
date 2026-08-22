@@ -87,6 +87,21 @@ describe('AudioManager fades', () => {
     expect(gainOf(manager)).toBeCloseTo(dbToGain(gainDb) * 0.5, 5);
   });
 
+  it('falls back to the file duration when the clip has no end', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(20);
+    const manager = makeManager();
+    manager.setSound(baseSound({gain: 0, fadeOut: 5, end: undefined}));
+
+    manager.updateFade(14);
+    expect(gainOf(manager)).toBeCloseTo(1, 5);
+
+    manager.updateFade(17.5);
+    expect(gainOf(manager)).toBeCloseTo(0.5, 5);
+
+    manager.updateFade(20);
+    expect(gainOf(manager)).toBeCloseTo(0, 5);
+  });
+
   it('respects the clip offset when computing elapsed time', () => {
     const manager = makeManager();
     manager.setSound(baseSound({gain: 0, offset: 3, fadeIn: 2, end: 10}));

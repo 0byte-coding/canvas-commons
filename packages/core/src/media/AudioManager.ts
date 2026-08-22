@@ -16,6 +16,7 @@ export class AudioManager {
   private fadeIn = 0;
   private fadeOut = 0;
   private clipDuration?: number;
+  private trimStart = 0;
 
   public constructor(
     private readonly logger: Logger,
@@ -47,8 +48,11 @@ export class AudioManager {
     this.baseGainDb = sound.gain ?? 0;
     this.fadeIn = sound.fadeIn ?? 0;
     this.fadeOut = sound.fadeOut ?? 0;
+    this.trimStart = sound.start ?? 0;
     this.clipDuration =
-      sound.end !== undefined ? sound.end - (sound.start ?? 0) : undefined;
+      sound.end !== undefined
+        ? (sound.end - (sound.start ?? 0)) / sound.realPlaybackRate
+        : undefined;
     this.gainNode.gain.value = dbToGain(this.baseGainDb);
     this.setPlaybackRate(sound.realPlaybackRate, true);
   }
@@ -66,21 +70,32 @@ export class AudioManager {
       return;
     }
 
-    const elapsed =
-      (absoluteTime - this.offset) * this.audioElement.playbackRate;
+    const elapsed = absoluteTime - this.offset;
     let multiplier = 1;
     if (this.fadeIn > 0 && elapsed < this.fadeIn) {
       multiplier *= Math.max(0, elapsed / this.fadeIn);
     }
-    if (this.fadeOut > 0 && this.clipDuration !== undefined) {
-      const fadeOutStart = this.clipDuration - this.fadeOut;
+    const clipDuration = this.resolveClipDuration();
+    if (this.fadeOut > 0 && clipDuration !== undefined) {
+      const fadeOutStart = clipDuration - this.fadeOut;
       if (elapsed > fadeOutStart) {
-        const remaining = this.clipDuration - elapsed;
+        const remaining = clipDuration - elapsed;
         multiplier *= Math.max(0, Math.min(1, remaining / this.fadeOut));
       }
     }
 
     this.gainNode.gain.value = dbToGain(this.baseGainDb) * multiplier;
+  }
+
+  private resolveClipDuration(): number | undefined {
+    if (this.clipDuration !== undefined) {
+      return this.clipDuration;
+    }
+    const fileDuration = this.audioElement.duration;
+    if (!isFinite(fileDuration)) {
+      return undefined;
+    }
+    return (fileDuration - this.trimStart) / this.audioElement.playbackRate;
   }
 
   public getTime() {
