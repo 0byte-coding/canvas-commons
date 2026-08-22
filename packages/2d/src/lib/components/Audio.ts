@@ -46,6 +46,14 @@ export interface AudioProps extends RectProps {
    * {@inheritDoc Audio.levelTo}
    */
   levelTo?: SignalValue<number | false>;
+  /**
+   * {@inheritDoc Audio.fadeIn}
+   */
+  fadeIn?: SignalValue<number>;
+  /**
+   * {@inheritDoc Audio.fadeOut}
+   */
+  fadeOut?: SignalValue<number>;
 }
 
 @nodeName('Audio')
@@ -123,6 +131,26 @@ export class Audio extends Rect {
   @initial(false)
   @signal()
   declare public readonly levelTo: SimpleSignal<number | false, this>;
+
+  /**
+   * Fade this audio in from silence over the given number of seconds at its
+   * start.
+   *
+   * @defaultValue 0
+   */
+  @initial(0)
+  @signal()
+  declare public readonly fadeIn: SimpleSignal<number, this>;
+
+  /**
+   * Fade this audio out to silence over the given number of seconds at its
+   * end.
+   *
+   * @defaultValue 0
+   */
+  @initial(0)
+  @signal()
+  declare public readonly fadeOut: SimpleSignal<number, this>;
 
   @initial(0)
   @signal()
@@ -252,6 +280,8 @@ export class Audio extends Rect {
       origin: 'audio',
       normalize: this.normalize(),
       levelTo: this.levelTo(),
+      fadeIn: this.fadeIn(),
+      fadeOut: this.fadeOut(),
     });
   }
 

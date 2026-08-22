@@ -17,6 +17,8 @@ export interface MediaAudioClipConfig {
   origin: SoundOrigin;
   normalize: number | false;
   levelTo: number | false;
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export interface MediaAudioClipHandle {
@@ -39,6 +41,8 @@ export class MediaAudioClip {
         playbackRate: config.playbackRate,
         sourceKey: config.sourceKey,
         origin: config.origin,
+        fadeIn: config.fadeIn,
+        fadeOut: config.fadeOut,
       },
       0,
     );

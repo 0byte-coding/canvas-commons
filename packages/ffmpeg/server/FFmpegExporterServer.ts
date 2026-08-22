@@ -117,6 +117,25 @@ export class FFmpegExporterServer {
         });
       }
 
+      const fadeIn = sound.fadeIn ?? 0;
+      const fadeOut = sound.fadeOut ?? 0;
+      if (fadeIn > 0) {
+        filters.push({
+          filter: 'afade',
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          options: {t: 'in', st: 0, d: fadeIn},
+        });
+      }
+      if (fadeOut > 0 && sound.end !== undefined) {
+        const clipDuration = sound.end - trimmed;
+        const start = Math.max(0, clipDuration - fadeOut);
+        filters.push({
+          filter: 'afade',
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          options: {t: 'out', st: start, d: fadeOut},
+        });
+      }
+
       if (sound.realPlaybackRate !== 1) {
         const rate = Math.round(
           settings.audioSampleRate * sound.realPlaybackRate,

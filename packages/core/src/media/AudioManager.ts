@@ -12,6 +12,10 @@ export class AudioManager {
   private duration?: number;
   private gainNode?: GainNode;
   private sourceNode?: MediaElementAudioSourceNode;
+  private baseGainDb = 0;
+  private fadeIn = 0;
+  private fadeOut = 0;
+  private clipDuration?: number;
 
   public constructor(
     private readonly logger: Logger,
@@ -40,8 +44,43 @@ export class AudioManager {
       this.gainNode.connect(this.context.destination);
     }
 
-    this.gainNode.gain.value = dbToGain(sound.gain ?? 0);
+    this.baseGainDb = sound.gain ?? 0;
+    this.fadeIn = sound.fadeIn ?? 0;
+    this.fadeOut = sound.fadeOut ?? 0;
+    this.clipDuration =
+      sound.end !== undefined ? sound.end - (sound.start ?? 0) : undefined;
+    this.gainNode.gain.value = dbToGain(this.baseGainDb);
     this.setPlaybackRate(sound.realPlaybackRate, true);
+  }
+
+  /**
+   * Update the gain node for the current playhead, applying fade in/out.
+   *
+   * @param absoluteTime - The scene time in seconds.
+   */
+  public updateFade(absoluteTime: number) {
+    if (this.gainNode === undefined) {
+      return;
+    }
+    if (this.fadeIn <= 0 && this.fadeOut <= 0) {
+      return;
+    }
+
+    const elapsed =
+      (absoluteTime - this.offset) * this.audioElement.playbackRate;
+    let multiplier = 1;
+    if (this.fadeIn > 0 && elapsed < this.fadeIn) {
+      multiplier *= Math.max(0, elapsed / this.fadeIn);
+    }
+    if (this.fadeOut > 0 && this.clipDuration !== undefined) {
+      const fadeOutStart = this.clipDuration - this.fadeOut;
+      if (elapsed > fadeOutStart) {
+        const remaining = this.clipDuration - elapsed;
+        multiplier *= Math.max(0, Math.min(1, remaining / this.fadeOut));
+      }
+    }
+
+    this.gainNode.gain.value = dbToGain(this.baseGainDb) * multiplier;
   }
 
   public getTime() {

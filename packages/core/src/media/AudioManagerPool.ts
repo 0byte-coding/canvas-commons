@@ -119,6 +119,7 @@ export class AudioManagerPool {
         manager.setVolume(volume);
         manager.setTime(time);
         manager.setPaused(this.paused);
+        manager.updateFade(time);
         this.managers.set(sound, manager);
       } else {
         const manager = this.managers.get(sound);
@@ -130,6 +131,8 @@ export class AudioManagerPool {
         this.managers.delete(sound);
       }
     }
+
+    this.managers.forEach(manager => manager.updateFade(time));
   }
 
   public spawn() {

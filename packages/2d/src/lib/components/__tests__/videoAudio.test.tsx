@@ -6,6 +6,7 @@ import {
   waitFor,
 } from '@canvas-commons/core';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {Audio} from '../Audio';
 import {Video} from '../Video';
 import {generatorTest} from './generatorTest';
 import {mockScene2D} from './mockScene2D';
@@ -347,6 +348,52 @@ describe('Video playback sync', () => {
       expect(history.length).toBeGreaterThan(0);
 
       video.pause();
+    }),
+  );
+
+  it(
+    'registers fadeIn and fadeOut on the sound clip',
+    generatorTest(function* () {
+      const video = (
+        <TestVideo src="clip.mp4" fadeIn={2} fadeOut={5} />
+      ) as TestVideo;
+      makeReady(video, 10);
+
+      video.play();
+      const [clip] = useScene().sounds.getSounds();
+      expect(clip.fadeIn).toBe(2);
+      expect(clip.fadeOut).toBe(5);
+      video.pause();
+    }),
+  );
+
+  it(
+    'defaults fade values to zero',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+      makeReady(video, 10);
+
+      video.play();
+      const [clip] = useScene().sounds.getSounds();
+      expect(clip.fadeIn).toBe(0);
+      expect(clip.fadeOut).toBe(0);
+      video.pause();
+    }),
+  );
+
+  it(
+    'Audio node registers fadeIn and fadeOut on the sound clip',
+    generatorTest(function* () {
+      const audio = (
+        <Audio src="clip.mp3" fadeIn={1.5} fadeOut={5} />
+      ) as Audio;
+
+      audio.play();
+      const [clip] = useScene().sounds.getSounds();
+      expect(clip.fadeIn).toBe(1.5);
+      expect(clip.fadeOut).toBe(5);
+      expect(clip.origin).toBe('audio');
+      audio.pause();
     }),
   );
 });

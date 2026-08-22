@@ -21,6 +21,14 @@ export interface SoundSettings {
   detune?: number;
   playbackRate?: number;
   /**
+   * Seconds to fade the sound in from silence at its start.
+   */
+  fadeIn?: number;
+  /**
+   * Seconds to fade the sound out to silence at its end.
+   */
+  fadeOut?: number;
+  /**
    * The key of the scene node this sound originated from, if any.
    *
    * @remarks
@@ -106,6 +114,26 @@ export class SoundBuilder {
    */
   public playbackRate(rate: number): this {
     this.settings.playbackRate = rate > 0 ? rate : 1;
+    return this;
+  }
+
+  /**
+   * Fade the sound in from silence over the given number of seconds.
+   *
+   * @param seconds - Fade-in duration in seconds.
+   */
+  public fadeIn(seconds: number): this {
+    this.settings.fadeIn = Math.max(0, seconds);
+    return this;
+  }
+
+  /**
+   * Fade the sound out to silence over the given number of seconds at its end.
+   *
+   * @param seconds - Fade-out duration in seconds.
+   */
+  public fadeOut(seconds: number): this {
+    this.settings.fadeOut = Math.max(0, seconds);
     return this;
   }
 

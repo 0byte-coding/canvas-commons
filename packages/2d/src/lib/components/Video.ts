@@ -56,6 +56,14 @@ export interface VideoProps extends RectProps {
    * {@inheritDoc Video.levelTo}
    */
   levelTo?: SignalValue<number | false>;
+  /**
+   * {@inheritDoc Video.fadeIn}
+   */
+  fadeIn?: SignalValue<number>;
+  /**
+   * {@inheritDoc Video.fadeOut}
+   */
+  fadeOut?: SignalValue<number>;
 }
 
 @nodeName('Video')
@@ -162,6 +170,26 @@ export class Video extends Rect {
   @initial(false)
   @signal()
   declare public readonly levelTo: SimpleSignal<number | false, this>;
+
+  /**
+   * Fade this video's audio in from silence over the given number of seconds
+   * at its start.
+   *
+   * @defaultValue 0
+   */
+  @initial(0)
+  @signal()
+  declare public readonly fadeIn: SimpleSignal<number, this>;
+
+  /**
+   * Fade this video's audio out to silence over the given number of seconds
+   * at its end.
+   *
+   * @defaultValue 0
+   */
+  @initial(0)
+  @signal()
+  declare public readonly fadeOut: SimpleSignal<number, this>;
 
   @initial(0)
   @signal()
@@ -495,6 +523,8 @@ export class Video extends Rect {
       origin: 'media',
       normalize: this.normalize(),
       levelTo: this.levelTo(),
+      fadeIn: this.fadeIn(),
+      fadeOut: this.fadeOut(),
     });
   }
 
