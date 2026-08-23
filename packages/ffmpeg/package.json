@@ -30,6 +30,7 @@
   "scripts": {
     "dev": "tsdown --watch",
     "build": "tsdown",
+    "test": "vitest run",
     "lint:pkg": "publint --strict && attw --pack . --profile esm-only --ignore-rules internal-resolution-error"
   },
   "repository": {
@@ -41,7 +42,8 @@
     "lib"
   ],
   "devDependencies": {
-    "@types/fluent-ffmpeg": "^2.1.21"
+    "@types/fluent-ffmpeg": "^2.1.21",
+    "vitest": "^4.1.6"
   },
   "dependencies": {
     "@canvas-commons/core": "workspace:^",
