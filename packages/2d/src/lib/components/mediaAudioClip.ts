@@ -27,17 +27,6 @@ export interface MediaAudioClipConfig {
   origin: SoundOrigin;
   normalize: number | false;
   levelTo: number | false;
-  /**
-   * Resolves the time-varying gain keyframes, if any.
-   *
-   * @remarks
-   * Invoked lazily, only once the async gain adjustment fires (after
-   * recalculation). This lets the `Audio` node keep recording keyframes from
-   * its `fade*To` generators after the clip was registered at `play()`, so the
-   * envelope is complete by the time it is read - without registering a second
-   * clip.
-   */
-  resolveGainTargets?: () => GainTargetEvent[] | undefined;
   fadeIn?: number;
   fadeOut?: number;
 }
@@ -141,19 +130,6 @@ export class MediaAudioClip {
           return;
         }
 
-        const gainTargets = config.resolveGainTargets?.();
-        if (gainTargets && gainTargets.length > 0) {
-          const events = await this.resolveGainEvents(
-            analyzer,
-            config.audio,
-            gainTargets,
-          );
-          if (!superseded()) {
-            clip.gainEvents = events;
-          }
-          return;
-        }
-
         if (target === false) {
           return;
         }
@@ -177,12 +153,36 @@ export class MediaAudioClip {
     trackPendingAudioAdjustment(adjustment);
   }
 
-  private resolveGainEvents(
-    analyzer: ReturnType<typeof useMediaAudioAnalyzer>,
-    audio: string,
-    targets: GainTargetEvent[],
-  ): Promise<GainEvent[]> {
-    return resolveGainEvents(analyzer, audio, targets);
+  /**
+   * Resolve a recorded gain envelope for the current clip and apply it as an
+   * absolute per-frame gain (in dB).
+   *
+   * @remarks
+   * Kicked off by the `fade*To` generators once they have finished recording
+   * the envelope, so the keyframes are complete. Tracked as a pending audio
+   * adjustment so the player/renderer waits for it before snapshotting sounds.
+   */
+  public applyGainEnvelope(targets: GainTargetEvent[]): void {
+    const handle = this.handle;
+    if (!handle || targets.length === 0) {
+      return;
+    }
+    const {clip, token} = handle;
+    const analyzer = useMediaAudioAnalyzer();
+    const audio = clip.audio;
+    const adjustment = resolveGainEvents(analyzer, audio, targets)
+      .then(events => {
+        if (token === this.registrationToken) {
+          clip.gainEvents = events;
+        }
+      })
+      .catch(e => {
+        useLogger().warn({
+          message: `Could not resolve gain envelope for "${audio}".`,
+          remarks: String(e),
+        });
+      });
+    trackPendingAudioAdjustment(adjustment);
   }
 
   /**

@@ -291,6 +291,10 @@ export class Audio extends Rect {
     });
     (signal as SimpleSignal<number, this>)(target);
     this.recordGainTarget(mode, target, thread.time());
+    // The keyframes are now complete, so resolve them into an absolute gain
+    // envelope on the current clip. Kicked off here (not at play()) so the
+    // async loudness measurement reads a fully-recorded envelope.
+    this.audio.applyGainEnvelope([...this.gainTargetEvents]);
   }
 
   private recordGainTarget(mode: GainMode, target: number, time: number): void {
@@ -401,13 +405,6 @@ export class Audio extends Rect {
       origin: 'audio',
       normalize: this.normalize(),
       levelTo: this.levelTo(),
-      // Passed as a getter: the envelope keyframes are recorded by the fade*To
-      // generators after play() runs, and only read once the async gain
-      // resolution fires (after recalculation), by which point they're complete.
-      resolveGainTargets: () =>
-        this.gainTargetEvents.length > 0
-          ? [...this.gainTargetEvents]
-          : undefined,
       fadeIn: this.fadeIn(),
       fadeOut: this.fadeOut(),
     });
