@@ -27,9 +27,69 @@ export interface MediaAudioClipConfig {
   origin: SoundOrigin;
   normalize: number | false;
   levelTo: number | false;
-  gainTargets?: GainTargetEvent[];
+  /**
+   * Resolves the time-varying gain keyframes, if any.
+   *
+   * @remarks
+   * Invoked lazily, only once the async gain adjustment fires (after
+   * recalculation). This lets the `Audio` node keep recording keyframes from
+   * its `fade*To` generators after the clip was registered at `play()`, so the
+   * envelope is complete by the time it is read - without registering a second
+   * clip.
+   */
+  resolveGainTargets?: () => GainTargetEvent[] | undefined;
   fadeIn?: number;
   fadeOut?: number;
+}
+
+/**
+ * Resolve time-varying gain target keyframes into an absolute dB envelope.
+ *
+ * @remarks
+ * `volume` targets are already absolute dB. `levelTo`/`normalize` targets are
+ * LUFS values; since {@link MediaAudioAnalyzer.computeNormalizeGain} is linear
+ * in the target, a single reference gain (measured at target `0`) is reused per
+ * mode and offset by each event's target. Events are returned sorted by time.
+ *
+ * @param analyzer - The loudness analyzer used to measure the reference gain.
+ * @param audio - The source url to measure.
+ * @param targets - The recorded gain keyframes.
+ */
+export async function resolveGainEvents(
+  analyzer: ReturnType<typeof useMediaAudioAnalyzer>,
+  audio: string,
+  targets: GainTargetEvent[],
+): Promise<GainEvent[]> {
+  let loudPartRef: number | undefined;
+  let integratedRef: number | undefined;
+
+  const resolveGain = async (event: GainTargetEvent): Promise<number> => {
+    switch (event.mode) {
+      case 'volume':
+        return gainToDb(event.target);
+      case 'levelTo':
+        loudPartRef ??= await analyzer.computeNormalizeGain(
+          audio,
+          0,
+          'loudPart',
+        );
+        return loudPartRef + event.target;
+      case 'normalize':
+        integratedRef ??= await analyzer.computeNormalizeGain(
+          audio,
+          0,
+          'integrated',
+        );
+        return integratedRef + event.target;
+    }
+  };
+
+  const events: GainEvent[] = [];
+  for (const target of targets) {
+    events.push({time: target.time, gain: await resolveGain(target)});
+  }
+  events.sort((a, b) => a.time - b.time);
+  return events;
 }
 
 export interface MediaAudioClipHandle {
@@ -75,11 +135,12 @@ export class MediaAudioClip {
           return;
         }
 
-        if (config.gainTargets && config.gainTargets.length > 0) {
+        const gainTargets = config.resolveGainTargets?.();
+        if (gainTargets && gainTargets.length > 0) {
           const events = await this.resolveGainEvents(
             analyzer,
             config.audio,
-            config.gainTargets,
+            gainTargets,
           );
           if (this.handle?.clip === clip && this.handle.token === token) {
             clip.gainEvents = events;
@@ -110,43 +171,12 @@ export class MediaAudioClip {
     trackPendingAudioAdjustment(adjustment);
   }
 
-  private async resolveGainEvents(
+  private resolveGainEvents(
     analyzer: ReturnType<typeof useMediaAudioAnalyzer>,
     audio: string,
     targets: GainTargetEvent[],
   ): Promise<GainEvent[]> {
-    // computeNormalizeGain is linear in the target LUFS, so measure a single
-    // reference offset per mode (gain at target 0) and add the per-event target.
-    let loudPartRef: number | undefined;
-    let integratedRef: number | undefined;
-
-    const resolveGain = async (event: GainTargetEvent): Promise<number> => {
-      switch (event.mode) {
-        case 'volume':
-          return gainToDb(event.target);
-        case 'levelTo':
-          loudPartRef ??= await analyzer.computeNormalizeGain(
-            audio,
-            0,
-            'loudPart',
-          );
-          return loudPartRef + event.target;
-        case 'normalize':
-          integratedRef ??= await analyzer.computeNormalizeGain(
-            audio,
-            0,
-            'integrated',
-          );
-          return integratedRef + event.target;
-      }
-    };
-
-    const events: GainEvent[] = [];
-    for (const target of targets) {
-      events.push({time: target.time, gain: await resolveGain(target)});
-    }
-    events.sort((a, b) => a.time - b.time);
-    return events;
+    return resolveGainEvents(analyzer, audio, targets);
   }
 
   /**

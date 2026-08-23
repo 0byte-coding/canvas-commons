@@ -396,6 +396,23 @@ describe('Video playback sync', () => {
       audio.pause();
     }),
   );
+
+  it(
+    'animating the level keeps a single sound clip and records keyframes',
+    generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      yield* audio.fadeLevelTo(-16, 1);
+      // A single node must own exactly one clip, even after animating gain: the
+      // reported bug was a second, offset waveform from re-registering.
+      expect(useScene().sounds.getSounds()).toHaveLength(1);
+      // The ramp is recorded as gain keyframes for later async resolution.
+      const recorded = (audio as unknown as {gainTargetEvents: unknown[]})
+        .gainTargetEvents;
+      expect(recorded.length).toBeGreaterThanOrEqual(2);
+      audio.pause();
+    }),
+  );
 });
 
 describe('Video.getDuration', () => {

@@ -183,7 +183,6 @@ export class Audio extends Rect {
   private lastTime = -1;
   private readonly audio = new MediaAudioClip();
   private gainTargetEvents: GainTargetEvent[] = [];
-  private clipStartTime = 0;
 
   public constructor({play, ...props}: AudioProps) {
     super(props);
@@ -292,9 +291,6 @@ export class Audio extends Rect {
     });
     (signal as SimpleSignal<number, this>)(target);
     this.recordGainTarget(mode, target, thread.time());
-    if (this.playing()) {
-      this.registerAudioClip(this.clipStartTime);
-    }
   }
 
   private recordGainTarget(mode: GainMode, target: number, time: number): void {
@@ -371,7 +367,6 @@ export class Audio extends Rect {
     const playbackRate = this.playbackRate();
     this.playing(true);
     this.time(() => this.clampTime(offset + (time() - start) * playbackRate));
-    this.clipStartTime = offset;
     this.registerAudioClip(offset);
   }
 
@@ -406,8 +401,13 @@ export class Audio extends Rect {
       origin: 'audio',
       normalize: this.normalize(),
       levelTo: this.levelTo(),
-      gainTargets:
-        this.gainTargetEvents.length > 0 ? this.gainTargetEvents : undefined,
+      // Passed as a getter: the envelope keyframes are recorded by the fade*To
+      // generators after play() runs, and only read once the async gain
+      // resolution fires (after recalculation), by which point they're complete.
+      resolveGainTargets: () =>
+        this.gainTargetEvents.length > 0
+          ? [...this.gainTargetEvents]
+          : undefined,
       fadeIn: this.fadeIn(),
       fadeOut: this.fadeOut(),
     });
