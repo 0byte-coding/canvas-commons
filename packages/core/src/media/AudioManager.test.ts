@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {Logger} from '../app';
 import {Sound} from '../scenes';
 import {AudioManager} from './AudioManager';
-import {dbToGain} from './gain';
+import {dbToGain, gainToDb} from './gain';
 
 function makeManager(): AudioManager {
   const gainNode = {gain: {value: 1}, connect: vi.fn(), disconnect: vi.fn()};
@@ -110,6 +110,45 @@ describe('AudioManager fades', () => {
     expect(gainOf(manager)).toBeCloseTo(0, 5);
 
     manager.updateFade(4);
+    expect(gainOf(manager)).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('AudioManager gain envelope', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, 'playbackRate', 'get').mockReturnValue(
+      1,
+    );
+  });
+  it('interpolates the base gain from the envelope over time', () => {
+    const manager = makeManager();
+    manager.setSound(
+      baseSound({
+        gain: 0,
+        gainEvents: [
+          {time: 0, gain: gainToDb(0.25)},
+          {time: 4, gain: gainToDb(1)},
+        ],
+      }),
+    );
+    manager.updateFade(0);
+    expect(gainOf(manager)).toBeCloseTo(0.25, 5);
+    manager.updateFade(4);
+    expect(gainOf(manager)).toBeCloseTo(1, 5);
+  });
+  it('combines the envelope with fades multiplicatively', () => {
+    const manager = makeManager();
+    manager.setSound(
+      baseSound({
+        gain: 0,
+        fadeIn: 2,
+        gainEvents: [
+          {time: 0, gain: gainToDb(1)},
+          {time: 10, gain: gainToDb(1)},
+        ],
+      }),
+    );
+    manager.updateFade(1);
     expect(gainOf(manager)).toBeCloseTo(0.5, 5);
   });
 });

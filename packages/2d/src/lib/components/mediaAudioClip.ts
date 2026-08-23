@@ -1,12 +1,22 @@
 import {
+  GainEvent,
   Scene,
   Sound,
   SoundOrigin,
+  gainToDb,
   trackPendingAudioAdjustment,
   useLogger,
   useMediaAudioAnalyzer,
   useScene,
 } from '@canvas-commons/core';
+
+export type GainTargetMode = 'volume' | 'levelTo' | 'normalize';
+
+export interface GainTargetEvent {
+  time: number;
+  target: number;
+  mode: GainTargetMode;
+}
 
 export interface MediaAudioClipConfig {
   audio: string;
@@ -17,6 +27,7 @@ export interface MediaAudioClipConfig {
   origin: SoundOrigin;
   normalize: number | false;
   levelTo: number | false;
+  gainTargets?: GainTargetEvent[];
   fadeIn?: number;
   fadeOut?: number;
 }
@@ -64,6 +75,18 @@ export class MediaAudioClip {
           return;
         }
 
+        if (config.gainTargets && config.gainTargets.length > 0) {
+          const events = await this.resolveGainEvents(
+            analyzer,
+            config.audio,
+            config.gainTargets,
+          );
+          if (this.handle?.clip === clip && this.handle.token === token) {
+            clip.gainEvents = events;
+          }
+          return;
+        }
+
         if (target === false) {
           return;
         }
@@ -85,6 +108,45 @@ export class MediaAudioClip {
         });
       });
     trackPendingAudioAdjustment(adjustment);
+  }
+
+  private async resolveGainEvents(
+    analyzer: ReturnType<typeof useMediaAudioAnalyzer>,
+    audio: string,
+    targets: GainTargetEvent[],
+  ): Promise<GainEvent[]> {
+    // computeNormalizeGain is linear in the target LUFS, so measure a single
+    // reference offset per mode (gain at target 0) and add the per-event target.
+    let loudPartRef: number | undefined;
+    let integratedRef: number | undefined;
+
+    const resolveGain = async (event: GainTargetEvent): Promise<number> => {
+      switch (event.mode) {
+        case 'volume':
+          return gainToDb(event.target);
+        case 'levelTo':
+          loudPartRef ??= await analyzer.computeNormalizeGain(
+            audio,
+            0,
+            'loudPart',
+          );
+          return loudPartRef + event.target;
+        case 'normalize':
+          integratedRef ??= await analyzer.computeNormalizeGain(
+            audio,
+            0,
+            'integrated',
+          );
+          return integratedRef + event.target;
+      }
+    };
+
+    const events: GainEvent[] = [];
+    for (const target of targets) {
+      events.push({time: target.time, gain: await resolveGain(target)});
+    }
+    events.sort((a, b) => a.time - b.time);
+    return events;
   }
 
   /**

@@ -3,8 +3,12 @@ import {
   SerializedVector2,
   SignalValue,
   SimpleSignal,
+  ThreadGenerator,
+  TimingFunction,
   clamp,
   gainToDb,
+  linear,
+  tween,
   useThread,
 } from '@canvas-commons/core';
 import {computed, initial, nodeName, signal} from '../decorators';
@@ -54,6 +58,22 @@ export interface AudioProps extends RectProps {
    * {@inheritDoc Audio.fadeOut}
    */
   fadeOut?: SignalValue<number>;
+}
+
+/**
+ * Which gain mode a recorded keyframe was authored in.
+ *
+ * @remarks
+ * `volume` values are absolute dB and need no measurement. `levelTo`/`normalize`
+ * values are LUFS targets and are offset by the source's measured loudness at
+ * registration time to become an absolute gain.
+ */
+type GainMode = 'volume' | 'levelTo' | 'normalize';
+
+interface GainTargetEvent {
+  time: number;
+  target: number;
+  mode: GainMode;
 }
 
 @nodeName('Audio')
@@ -162,6 +182,8 @@ export class Audio extends Rect {
 
   private lastTime = -1;
   private readonly audio = new MediaAudioClip();
+  private gainTargetEvents: GainTargetEvent[] = [];
+  private clipStartTime = 0;
 
   public constructor({play, ...props}: AudioProps) {
     super(props);
@@ -180,6 +202,109 @@ export class Audio extends Rect {
 
   public getDuration(): number {
     return this.element().duration;
+  }
+
+  /**
+   * Smoothly animate {@link levelTo} to a new target LUFS over time.
+   *
+   * @remarks
+   * Records a gain envelope so the transition is applied per frame in both the
+   * live preview and the export, on a single `Audio` node - no need to
+   * crossfade two clips. Preserves the level-based loudness normalization.
+   *
+   * @param target - The target loudness in LUFS.
+   * @param duration - Duration of the ramp in seconds.
+   * @param timing - Timing function for the ramp. Defaults to linear.
+   */
+  public *fadeLevelTo(
+    target: number,
+    duration: number,
+    timing: TimingFunction = linear,
+  ): ThreadGenerator {
+    yield* this.animateGainTarget(
+      'levelTo',
+      this.levelTo,
+      target,
+      duration,
+      timing,
+    );
+  }
+
+  /**
+   * Smoothly animate {@link normalize} to a new target LUFS over time.
+   *
+   * @param target - The target loudness in LUFS.
+   * @param duration - Duration of the ramp in seconds.
+   * @param timing - Timing function for the ramp. Defaults to linear.
+   */
+  public *fadeNormalizeTo(
+    target: number,
+    duration: number,
+    timing: TimingFunction = linear,
+  ): ThreadGenerator {
+    yield* this.animateGainTarget(
+      'normalize',
+      this.normalize,
+      target,
+      duration,
+      timing,
+    );
+  }
+
+  /**
+   * Smoothly animate {@link volume} to a new value over time, recording the
+   * change as a per-frame gain envelope.
+   *
+   * @param target - The target linear volume (`1` is unchanged).
+   * @param duration - Duration of the ramp in seconds.
+   * @param timing - Timing function for the ramp. Defaults to linear.
+   */
+  public *fadeVolumeTo(
+    target: number,
+    duration: number,
+    timing: TimingFunction = linear,
+  ): ThreadGenerator {
+    yield* this.animateGainTarget(
+      'volume',
+      this.volume,
+      target,
+      duration,
+      timing,
+    );
+  }
+
+  private *animateGainTarget(
+    mode: GainMode,
+    signal: SimpleSignal<number | false, this> | SimpleSignal<number, this>,
+    target: number,
+    duration: number,
+    timing: TimingFunction,
+  ): ThreadGenerator {
+    const thread = useThread();
+    const from =
+      (signal() as number | false) === false ? target : (signal() as number);
+    this.recordGainTarget(mode, from, thread.time());
+    yield* tween(duration, value => {
+      const eased = timing(value);
+      const current = from + (target - from) * eased;
+      (signal as SimpleSignal<number, this>)(current);
+      this.recordGainTarget(mode, current, thread.time());
+    });
+    (signal as SimpleSignal<number, this>)(target);
+    this.recordGainTarget(mode, target, thread.time());
+    if (this.playing()) {
+      this.registerAudioClip(this.clipStartTime);
+    }
+  }
+
+  private recordGainTarget(mode: GainMode, target: number, time: number): void {
+    const last = this.gainTargetEvents[this.gainTargetEvents.length - 1];
+    if (last && last.time === time) {
+      last.target = target;
+      last.mode = mode;
+      return;
+    }
+    this.gainTargetEvents.push({mode, target, time});
   }
 
   protected override desiredSize(): SerializedVector2<DesiredLength> {
@@ -246,6 +371,7 @@ export class Audio extends Rect {
     const playbackRate = this.playbackRate();
     this.playing(true);
     this.time(() => this.clampTime(offset + (time() - start) * playbackRate));
+    this.clipStartTime = offset;
     this.registerAudioClip(offset);
   }
 
@@ -280,6 +406,8 @@ export class Audio extends Rect {
       origin: 'audio',
       normalize: this.normalize(),
       levelTo: this.levelTo(),
+      gainTargets:
+        this.gainTargetEvents.length > 0 ? this.gainTargetEvents : undefined,
       fadeIn: this.fadeIn(),
       fadeOut: this.fadeOut(),
     });

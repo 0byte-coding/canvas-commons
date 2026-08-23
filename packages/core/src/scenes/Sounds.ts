@@ -13,11 +13,33 @@ import type {Scene} from './Scene';
  */
 export type SoundOrigin = 'media' | 'audio';
 
+/**
+ * A single keyframe of a time-varying gain envelope.
+ *
+ * @remarks
+ * `time` is measured in scene (wall-clock) seconds, absolute on the project
+ * timeline. `gain` is an amplitude-domain dB value, matching {@link Sound.gain}.
+ */
+export interface GainEvent {
+  time: number;
+  gain: number;
+}
+
 export interface SoundSettings {
   audio: string;
   start?: number;
   end?: number;
   gain?: number;
+  /**
+   * A time-varying gain envelope in dB, sampled per frame.
+   *
+   * @remarks
+   * When present, this overrides the static {@link gain} for playback and
+   * export, letting the volume/level be animated smoothly over the clip.
+   * Times are absolute scene seconds; values are interpolated piecewise
+   * linearly and held flat before the first and after the last event.
+   */
+  gainEvents?: GainEvent[];
   detune?: number;
   playbackRate?: number;
   /**

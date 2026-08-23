@@ -1,7 +1,7 @@
 import {Logger} from '../app';
-import {Sound} from '../scenes';
+import {GainEvent, Sound} from '../scenes';
 import {useLogger} from '../utils';
-import {dbToGain} from './gain';
+import {dbToGain, sampleGainEvents} from './gain';
 
 export class AudioManager {
   private readonly audioElement: HTMLAudioElement = new Audio();
@@ -13,6 +13,7 @@ export class AudioManager {
   private gainNode?: GainNode;
   private sourceNode?: MediaElementAudioSourceNode;
   private baseGainDb = 0;
+  private gainEvents?: GainEvent[];
   private fadeIn = 0;
   private fadeOut = 0;
   private clipDuration?: number;
@@ -46,6 +47,10 @@ export class AudioManager {
     }
 
     this.baseGainDb = sound.gain ?? 0;
+    this.gainEvents =
+      sound.gainEvents && sound.gainEvents.length > 0
+        ? sound.gainEvents
+        : undefined;
     this.fadeIn = sound.fadeIn ?? 0;
     this.fadeOut = sound.fadeOut ?? 0;
     this.trimStart = sound.start ?? 0;
@@ -53,8 +58,15 @@ export class AudioManager {
       sound.end !== undefined
         ? (sound.end - (sound.start ?? 0)) / sound.realPlaybackRate
         : undefined;
-    this.gainNode.gain.value = dbToGain(this.baseGainDb);
+    this.gainNode.gain.value = dbToGain(this.currentBaseGainDb(sound.offset));
     this.setPlaybackRate(sound.realPlaybackRate, true);
+  }
+
+  private currentBaseGainDb(absoluteTime: number): number {
+    if (this.gainEvents === undefined) {
+      return this.baseGainDb;
+    }
+    return sampleGainEvents(this.gainEvents, absoluteTime, this.baseGainDb);
   }
 
   /**
@@ -66,7 +78,8 @@ export class AudioManager {
     if (this.gainNode === undefined) {
       return;
     }
-    if (this.fadeIn <= 0 && this.fadeOut <= 0) {
+    const hasFade = this.fadeIn > 0 || this.fadeOut > 0;
+    if (!hasFade && this.gainEvents === undefined) {
       return;
     }
 
@@ -84,7 +97,8 @@ export class AudioManager {
       }
     }
 
-    this.gainNode.gain.value = dbToGain(this.baseGainDb) * multiplier;
+    this.gainNode.gain.value =
+      dbToGain(this.currentBaseGainDb(absoluteTime)) * multiplier;
   }
 
   private resolveClipDuration(): number | undefined {

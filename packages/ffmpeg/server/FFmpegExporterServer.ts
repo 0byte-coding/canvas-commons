@@ -28,6 +28,53 @@ export interface FFmpegExporterSettings extends RendererSettings {
   audioSampleRate: number;
 }
 
+/**
+ * Build an FFmpeg `volume` expression (evaluated per sample) that reproduces a
+ * piecewise-linear dB gain envelope.
+ *
+ * @remarks
+ * The keyframe times are scene-absolute seconds. This filter sits before
+ * `asetrate`/`adelay` in the chain, so `t` here is source-relative seconds
+ * (clip start = 0), obtained by subtracting the clip offset and scaling by the
+ * playback rate - matching how the fade positions are computed. The returned
+ * expression yields a linear amplitude multiplier and has its commas escaped
+ * for use inside `filter_complex`.
+ */
+function buildGainVolumeExpression(
+  events: {time: number; gain: number}[],
+  offset: number,
+  rate: number,
+): string {
+  const toLocalTime = (sceneTime: number): number =>
+    Math.max(0, sceneTime - offset) * rate;
+  const toLinear = (db: number): number => Math.pow(10, db / 20);
+
+  const points = events
+    .map(e => ({t: toLocalTime(e.time), g: toLinear(e.gain)}))
+    .sort((a, b) => a.t - b.t);
+
+  // Held flat after the last keyframe.
+  let expr = points[points.length - 1].g.toFixed(6);
+  // Walk backwards, wrapping earlier segments around the accumulated tail.
+  for (let i = points.length - 1; i >= 1; i--) {
+    const prev = points[i - 1];
+    const next = points[i];
+    const span = next.t - prev.t;
+    const segment =
+      span <= 0
+        ? next.g.toFixed(6)
+        : `(${prev.g.toFixed(6)}+(${(next.g - prev.g).toFixed(6)})*(t-${prev.t.toFixed(
+            6,
+          )})/${span.toFixed(6)})`;
+    expr = `if(lt(t,${next.t.toFixed(6)}),${segment},${expr})`;
+  }
+  // Held flat before the first keyframe.
+  expr = `if(lt(t,${points[0].t.toFixed(6)}),${points[0].g.toFixed(6)},${expr})`;
+
+  // Escape commas for filter_complex option parsing.
+  return expr.replace(/,/g, '\\,');
+}
+
 function formatFilters(filters: AudioVideoFilter[]): string {
   return filters
     .map(f => {
@@ -119,17 +166,31 @@ export class FFmpegExporterServer {
         options: settings.audioSampleRate.toString(),
       });
 
-      if (sound.gain) {
+      // Fades run before asetrate/adelay, so their positions are in source
+      // seconds. The user specifies fades in scene (wall-clock) seconds, so
+      // scale by the playback rate.
+      const rate = sound.realPlaybackRate;
+
+      if (sound.gainEvents && sound.gainEvents.length > 0) {
+        // A time-varying gain envelope: convert each scene-time keyframe into a
+        // source-relative time (matching where this volume filter sits in the
+        // chain, before asetrate/adelay) and emit a per-sample expression.
+        const expr = buildGainVolumeExpression(
+          sound.gainEvents,
+          sound.offset,
+          rate,
+        );
+        filters.push({
+          filter: 'volume',
+          // eslint-disable-next-line @typescript-eslint/naming-convention
+          options: {volume: expr, eval: 'frame'},
+        });
+      } else if (sound.gain) {
         filters.push({
           filter: 'volume',
           options: {volume: `${sound.gain}dB`},
         });
       }
-
-      // Fades run before asetrate/adelay, so their positions are in source
-      // seconds. The user specifies fades in scene (wall-clock) seconds, so
-      // scale by the playback rate.
-      const rate = sound.realPlaybackRate;
       const fadeIn = (sound.fadeIn ?? 0) * rate;
       const fadeOut = (sound.fadeOut ?? 0) * rate;
       if (fadeIn > 0) {
