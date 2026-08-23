@@ -444,6 +444,42 @@ describe('Video playback sync', () => {
     expect(events[events.length - 1].gain).toBeGreaterThan(events[0].gain);
   });
 
+  it('swells then fades back down as one continuous envelope', async () => {
+    const analyzer = useMediaAudioAnalyzer();
+    vi.spyOn(analyzer, 'hasAudio').mockResolvedValue(true);
+    vi.spyOn(analyzer, 'computeNormalizeGain').mockResolvedValue(20);
+
+    let clip: Sound;
+
+    const run = generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      yield* audio.fadeLevelTo(-16, 1);
+      yield* waitFor(3);
+      yield* audio.fadeLevelTo(-40, 1);
+      [clip] = useScene().sounds.getSounds() as Sound[];
+      audio.pause();
+    });
+    run();
+
+    await waitForPendingAudioAdjustments();
+    await flushMicrotasks();
+
+    const events = clip!.gainEvents!;
+    expect(events).toBeDefined();
+    // ref 20: -40 -> -20 dB, -16 -> +4 dB. Rises to the peak, holds, then falls
+    // back to the original quiet level.
+    expect(events[0].gain).toBeCloseTo(-20);
+    const peak = Math.max(...events.map(e => e.gain));
+    expect(peak).toBeCloseTo(4);
+    expect(events[events.length - 1].gain).toBeCloseTo(-20);
+    // The envelope should be a single sorted, monotonic-then-monotonic ramp -
+    // times strictly ascending across the whole round trip.
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].time).toBeGreaterThanOrEqual(events[i - 1].time);
+    }
+  });
+
   it('still lands the gain envelope when the clip is released first', async () => {
     const analyzer = useMediaAudioAnalyzer();
     let resolveMeasure!: (gain: number) => void;
