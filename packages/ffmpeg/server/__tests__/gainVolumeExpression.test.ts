@@ -116,4 +116,25 @@ describe('buildGainVolumeExpression()', () => {
     // scene 10 -> local 0, scene 12 -> local (12-10)*2 = 4.
     expect(expr).toContain('t,4.000000');
   });
+
+  it('anchors keyframes at scene 0 for a negative offset (head-trimmed clip)', () => {
+    // A whole-file clip that starts before scene 0 is trimmed via -ss, so its
+    // filter `t` begins at scene 0 - the negative offset must not shift the
+    // envelope ~190s into the clip (which silenced the fade in exports).
+    const events = [
+      {time: 5, gain: -40},
+      {time: 6, gain: -16},
+    ];
+    const expr = buildGainVolumeExpression(events, -189.9, 1).replace(
+      /\\,/g,
+      ',',
+    );
+    expect(expr).toContain('t,5.000000');
+    expect(expr).toContain('t,6.000000');
+    expect(expr).not.toContain('194');
+    // Sample: rises from quiet at scene 5 to loud at scene 6.
+    const quiet = evalExpr(buildGainVolumeExpression(events, -189.9, 1), 5);
+    const loud = evalExpr(buildGainVolumeExpression(events, -189.9, 1), 6);
+    expect(loud).toBeGreaterThan(quiet);
+  });
 });

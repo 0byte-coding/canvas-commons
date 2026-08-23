@@ -59,11 +59,13 @@ function dropCollinear(points: GainPoint[]): GainPoint[] {
  * @remarks
  * Keyframe times are scene-absolute seconds. The filter sits before
  * `asetrate`/`adelay`, so `t` is source-relative seconds (clip start = 0),
- * obtained by subtracting the clip offset and scaling by the playback rate.
- * The returned expression yields a linear amplitude multiplier with its commas
- * escaped for use inside `filter_complex`. Near-duplicate and collinear
- * keyframes are merged so the expression stays small and never divides by a
- * zero span.
+ * obtained by subtracting the clip's scene start and scaling by the playback
+ * rate. A negative offset means the clip begins before scene 0 (a whole-file
+ * clip trimmed at its head via `-ss`), so its on-screen start is clamped to 0 -
+ * matching where the filter's `t` actually begins. The returned expression
+ * yields a linear amplitude multiplier with its commas escaped for use inside
+ * `filter_complex`. Near-duplicate and collinear keyframes are merged so the
+ * expression stays small and never divides by a zero span.
  *
  * @param events - Envelope keyframes (scene-absolute seconds, dB gain).
  * @param offset - The clip's scene offset in seconds.
@@ -74,8 +76,9 @@ export function buildGainVolumeExpression(
   offset: number,
   rate: number,
 ): string {
+  const sceneStart = Math.max(0, offset);
   const toLocalTime = (sceneTime: number): number =>
-    Math.max(0, sceneTime - offset) * rate;
+    Math.max(0, sceneTime - sceneStart) * rate;
 
   const raw = events
     .map(e => ({t: toLocalTime(e.time), db: e.gain}))
