@@ -12,6 +12,7 @@ import * as path from 'path';
 import {Readable} from 'stream';
 import {buildGainVolumeExpression} from './gainVolumeExpression';
 import {ImageStream} from './ImageStream';
+import {resolveAudioPath} from './resolveAudioPath';
 
 ffmpeg.setFfmpegPath(ffmpegPath!);
 ffmpeg.setFfprobePath(ffprobePath!);
@@ -248,15 +249,8 @@ export class FFmpegExporterServer {
     });
   }
 
-  // Resolve an audio asset URL to a real filesystem path. Assets imported by
-  // absolute path (outside the Vite root) are served under `/@fs/`; everything
-  // else is a project-relative URL.
   private resolveAudioPath(url: string): string {
-    const clean = url.split('?')[0];
-    if (clean.startsWith('/@fs/')) {
-      return decodeURIComponent(clean.slice('/@fs'.length));
-    }
-    return decodeURIComponent(clean.slice(1));
+    return resolveAudioPath(url);
   }
 
   public async start() {
