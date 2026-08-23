@@ -1,4 +1,4 @@
-import {useLogger} from '../utils';
+import {useLogger, viaProxy} from '../utils';
 import {
   computeNormalizeGainDb,
   measureIntegratedLufs,
@@ -157,7 +157,7 @@ export class MediaAudioAnalyzer {
   private async decode(source: string): Promise<DecodedAudio | null> {
     let response: Response;
     try {
-      response = await fetch(source);
+      response = await fetch(viaProxy(source));
     } catch (e: any) {
       useLogger().warn({
         message: `Could not fetch audio for loudness analysis: "${source}".`,

@@ -10,6 +10,7 @@ import {
   isReactive,
   useLogger,
   useThread,
+  viaProxy,
 } from '@canvas-commons/core';
 import {computed, initial, nodeName, signal} from '../decorators';
 import {DesiredLength} from '../partials';
@@ -299,10 +300,26 @@ export class Video extends Rect {
     return this.clampTime(this.time()) / this.video().duration;
   }
 
+  // Resolve the raw src into a same-origin, cache-busted url and a pool key.
+  // Remote sources are routed through the cors proxy so the canvas is not
+  // CORS-tainted, which would make `getImageData` throw ("operation is
+  // insecure") when the renderer reads frames for export.
+  private resolveSource(): {src: string; poolKey: string} {
+    const rawSrc = this.src();
+    if (!rawSrc) {
+      return {src: '', poolKey: `${this.key}/`};
+    }
+    const proxied = viaProxy(rawSrc);
+    const url = new URL(proxied, window.location.origin);
+    if (url.origin === window.location.origin) {
+      url.searchParams.set('asset-hash', this.view().assetHash());
+    }
+    return {src: url.toString(), poolKey: `${this.key}/${proxied}`};
+  }
+
   private metadataElement(): HTMLVideoElement {
-    const src = this.src();
-    const key = `${this.key}/${src}`;
-    let video = Video.pool[key];
+    const {src, poolKey} = this.resolveSource();
+    let video = Video.pool[poolKey];
     if (!video) {
       video = document.createElement('video');
       // Ensure the browser fetches metadata eagerly instead of deferring it,
@@ -310,8 +327,9 @@ export class Video extends Rect {
       video.preload = 'auto';
       video.volume = 0;
       video.muted = true;
+      video.crossOrigin = 'anonymous';
       video.src = src;
-      Video.pool[key] = video;
+      Video.pool[poolKey] = video;
     }
     return video;
   }
@@ -539,7 +557,7 @@ export class Video extends Rect {
     // modulo yields NaN, which would otherwise be stored as the clip's `end`
     // and break its waveform. Fall back to the last resolved time in that case.
     const time = isFinite(rawTime) ? rawTime : Math.max(0, this.lastTime);
-    const duration = Video.pool[`${this.key}/${this.src()}`]?.duration;
+    const duration = Video.pool[this.resolveSource().poolKey]?.duration;
     if (!duration || !isFinite(duration)) {
       return Math.max(0, time);
     }

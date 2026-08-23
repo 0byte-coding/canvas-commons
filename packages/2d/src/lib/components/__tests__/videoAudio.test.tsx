@@ -6,7 +6,7 @@ import {
   waitFor,
   waitForPendingAudioAdjustments,
 } from '@canvas-commons/core';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {Audio} from '../Audio';
 import {Video} from '../Video';
 import {generatorTest} from './generatorTest';
@@ -510,6 +510,55 @@ describe('Video playback sync', () => {
 
     expect(clip!.gainEvents).toBeDefined();
     expect(clip!.gainEvents!.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Video CORS', () => {
+  mockScene2D();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    import.meta.env.VITE_MC_PROXY_ENABLED = undefined;
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = undefined;
+  });
+
+  const elementOf = (video: TestVideo): HTMLVideoElement =>
+    DependencyContext.collectingPromisesSuppressed(() => video.element());
+
+  it('requests the element anonymously so the export canvas is not tainted', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      4,
+    );
+    const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+    expect(elementOf(video).crossOrigin).toBe('anonymous');
+  });
+
+  it('routes a remote src through the cors proxy when enabled', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      4,
+    );
+    import.meta.env.VITE_MC_PROXY_ENABLED = 'true';
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = JSON.stringify([]);
+    const remote = 'https://i.imgflip.com/5utid6.mp4';
+    const video = (<TestVideo src={remote} />) as TestVideo;
+    expect(elementOf(video).getAttribute('src')).toContain(
+      '/cors-proxy/' + encodeURIComponent(remote),
+    );
+  });
+
+  it('leaves a local src same-origin (no proxy)', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
+      4,
+    );
+    import.meta.env.VITE_MC_PROXY_ENABLED = 'true';
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = JSON.stringify([]);
+    const video = (<TestVideo src="clip.mp4" />) as TestVideo;
+    expect(elementOf(video).getAttribute('src')).not.toContain('/cors-proxy/');
   });
 });
 
