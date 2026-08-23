@@ -4,6 +4,7 @@ import {
   useMediaAudioAnalyzer,
   useScene,
   waitFor,
+  waitForPendingAudioAdjustments,
 } from '@canvas-commons/core';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {Audio} from '../Audio';
@@ -413,6 +414,67 @@ describe('Video playback sync', () => {
       audio.pause();
     }),
   );
+
+  it('resolves the animated level into a rising gain envelope', async () => {
+    const analyzer = useMediaAudioAnalyzer();
+    vi.spyOn(analyzer, 'hasAudio').mockResolvedValue(true);
+    vi.spyOn(analyzer, 'computeNormalizeGain').mockResolvedValue(20);
+
+    let clip: Sound;
+
+    const run = generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      yield* audio.fadeLevelTo(-16, 1);
+      [clip] = useScene().sounds.getSounds() as Sound[];
+      audio.pause();
+    });
+    run();
+
+    await waitForPendingAudioAdjustments();
+    await flushMicrotasks();
+
+    expect(clip!.gainEvents).toBeDefined();
+    const events = clip!.gainEvents!;
+    expect(events.length).toBeGreaterThanOrEqual(2);
+    // loudPart ref (20) + target: -40 -> -20 dB, -16 -> 4 dB. The envelope must
+    // rise over time for the music to actually get louder.
+    expect(events[0].gain).toBeCloseTo(-20);
+    expect(events[events.length - 1].gain).toBeCloseTo(4);
+    expect(events[events.length - 1].gain).toBeGreaterThan(events[0].gain);
+  });
+
+  it('still lands the gain envelope when the clip is released first', async () => {
+    const analyzer = useMediaAudioAnalyzer();
+    let resolveMeasure!: (gain: number) => void;
+    vi.spyOn(analyzer, 'hasAudio').mockResolvedValue(true);
+    vi.spyOn(analyzer, 'computeNormalizeGain').mockReturnValue(
+      new Promise(resolve => {
+        resolveMeasure = resolve;
+      }),
+    );
+
+    let clip: Sound;
+
+    const run = generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      yield* audio.fadeLevelTo(-16, 1);
+      [clip] = useScene().sounds.getSounds() as Sound[];
+      // Simulate a recalculation tearing the node down (release, not finalize)
+      // while the async loudness measurement is still pending. The clip stays
+      // in the scene and must still receive its envelope.
+      (audio as unknown as {audio: {release(): void}}).audio.release();
+    });
+    run();
+
+    resolveMeasure(20);
+    await waitForPendingAudioAdjustments();
+    await flushMicrotasks();
+
+    expect(clip!.gainEvents).toBeDefined();
+    expect(clip!.gainEvents!.length).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('Video.getDuration', () => {

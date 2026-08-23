@@ -100,7 +100,7 @@ export interface MediaAudioClipHandle {
 
 export class MediaAudioClip {
   private handle: MediaAudioClipHandle | null = null;
-  private measurementToken = 0;
+  private registrationToken = 0;
 
   public register(config: MediaAudioClipConfig): void {
     const scene = useScene();
@@ -117,12 +117,18 @@ export class MediaAudioClip {
       },
       0,
     );
-    const token = ++this.measurementToken;
+    const token = ++this.registrationToken;
     this.handle = {clip, scene, token};
 
     const analyzer = useMediaAudioAnalyzer();
     const target = config.levelTo !== false ? config.levelTo : config.normalize;
     const mode = config.levelTo !== false ? 'loudPart' : 'integrated';
+
+    // The clip stays in the scene after finalize/release (it represents the
+    // whole file), so a still-pending measurement must still land on it. Only a
+    // newer registration of THIS instance supersedes it - tracked by comparing
+    // the captured registration token against the latest one.
+    const superseded = () => token !== this.registrationToken;
 
     const adjustment = analyzer
       .hasAudio(config.audio)
@@ -142,7 +148,7 @@ export class MediaAudioClip {
             config.audio,
             gainTargets,
           );
-          if (this.handle?.clip === clip && this.handle.token === token) {
+          if (!superseded()) {
             clip.gainEvents = events;
           }
           return;
@@ -157,7 +163,7 @@ export class MediaAudioClip {
           target,
           mode,
         );
-        if (this.handle?.clip === clip && this.handle.token === token) {
+        if (!superseded()) {
           clip.gain = gainDb;
         }
       })
@@ -186,7 +192,6 @@ export class MediaAudioClip {
    * A clip covering no duration is discarded.
    */
   public finalize(resolveEndTime: () => number): void {
-    this.measurementToken++;
     const handle = this.handle;
     if (!handle) {
       return;
@@ -211,7 +216,6 @@ export class MediaAudioClip {
    * playhead happened to be.
    */
   public release(): void {
-    this.measurementToken++;
     this.handle = null;
   }
 }
