@@ -1,10 +1,18 @@
 import {Logger} from '../app';
 import {GainEvent, Sound} from '../scenes';
-import {useLogger} from '../utils';
+import {useLogger, viaProxy} from '../utils';
 import {dbToGain, sampleGainEvents} from './gain';
 
+function createAudioElement(): HTMLAudioElement {
+  const element = new Audio();
+  // Request anonymously and (below) fetch remote sources through the proxy so
+  // playback of cross-origin media isn't blocked and the element can decode it.
+  element.crossOrigin = 'anonymous';
+  return element;
+}
+
 export class AudioManager {
-  private readonly audioElement: HTMLAudioElement = new Audio();
+  private readonly audioElement: HTMLAudioElement = createAudioElement();
   private source: string | null = null;
   private error = false;
   private offset = 0;
@@ -152,7 +160,7 @@ export class AudioManager {
 
   public setSource(src: string) {
     this.source = src;
-    this.audioElement.src = src;
+    this.audioElement.src = viaProxy(src);
   }
 
   public isInRange(time: number) {

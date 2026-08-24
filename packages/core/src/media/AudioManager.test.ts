@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {Logger} from '../app';
 import {Sound} from '../scenes';
 import {AudioManager} from './AudioManager';
@@ -150,5 +150,40 @@ describe('AudioManager gain envelope', () => {
     );
     manager.updateFade(1);
     expect(gainOf(manager)).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('AudioManager source', () => {
+  const elementOf = (manager: AudioManager): HTMLAudioElement =>
+    (manager as any).audioElement;
+
+  afterEach(() => {
+    import.meta.env.VITE_MC_PROXY_ENABLED = undefined;
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = undefined;
+  });
+
+  it('requests the playback element anonymously', () => {
+    const manager = makeManager();
+    expect(elementOf(manager).crossOrigin).toBe('anonymous');
+  });
+
+  it('routes a remote source through the cors proxy when enabled', () => {
+    import.meta.env.VITE_MC_PROXY_ENABLED = 'true';
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = JSON.stringify([]);
+    const manager = makeManager();
+    const remote = 'https://i.imgflip.com/6qyam6.mp4';
+    manager.setSource(remote);
+    expect(elementOf(manager).getAttribute('src')).toContain(
+      '/cors-proxy/' + encodeURIComponent(remote),
+    );
+  });
+
+  it('leaves the reported source url raw for identity checks', () => {
+    import.meta.env.VITE_MC_PROXY_ENABLED = 'true';
+    import.meta.env.VITE_MC_PROXY_ALLOW_LIST = JSON.stringify([]);
+    const manager = makeManager();
+    const remote = 'https://i.imgflip.com/6qyam6.mp4';
+    manager.setSource(remote);
+    expect(manager.getSource()).toBe(remote);
   });
 });
