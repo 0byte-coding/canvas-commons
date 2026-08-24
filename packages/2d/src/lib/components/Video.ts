@@ -564,8 +564,22 @@ export class Video extends Rect {
     return clamp(0, duration, this.loop() ? time % duration : time);
   }
 
+  // A muted clip (volume 0, with no normalize/levelTo override) produces no
+  // audio, so skip registering it entirely. This also avoids a -Infinity dB
+  // gain, which JSON-serializes to null on its way to the export server.
+  private isAudible(): boolean {
+    return (
+      this.normalize() !== false ||
+      this.levelTo() !== false ||
+      this.volume() > 0
+    );
+  }
+
   private registerAudioClip(startTime: number) {
     this.finalizeAudioClip();
+    if (!this.isAudible()) {
+      return;
+    }
     this.audio.register({
       audio: this.src(),
       start: startTime,

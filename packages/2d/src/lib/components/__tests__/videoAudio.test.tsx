@@ -104,6 +104,47 @@ describe('Video audio', () => {
   );
 
   it(
+    'registers no audio clip when muted (volume 0)',
+    generatorTest(function* () {
+      const video = (<TestVideo src="clip.mp4" volume={0} />) as TestVideo;
+      makeReady(video, 10);
+
+      video.play();
+      yield* waitFor(1);
+      expect(useScene().sounds.getSounds()).toHaveLength(0);
+      video.pause();
+    }),
+  );
+
+  it(
+    'still registers a muted clip when normalize overrides volume',
+    generatorTest(function* () {
+      const video = (
+        <TestVideo src="clip.mp4" volume={0} normalize={-16} />
+      ) as TestVideo;
+      makeReady(video, 10);
+
+      video.play();
+      expect(useScene().sounds.getSounds()).toHaveLength(1);
+      video.pause();
+    }),
+  );
+
+  it(
+    'still registers a muted clip when levelTo overrides volume',
+    generatorTest(function* () {
+      const video = (
+        <TestVideo src="clip.mp4" volume={0} levelTo={-16} />
+      ) as TestVideo;
+      makeReady(video, 10);
+
+      video.play();
+      expect(useScene().sounds.getSounds()).toHaveLength(1);
+      video.pause();
+    }),
+  );
+
+  it(
     'discards a clip that ends up covering no duration',
     generatorTest(function* () {
       const video = (<TestVideo src="clip.mp4" />) as TestVideo;
