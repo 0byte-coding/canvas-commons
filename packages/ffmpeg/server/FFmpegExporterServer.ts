@@ -10,6 +10,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
 import {Readable} from 'stream';
+import {formatConstantGainVolume} from './gainVolume';
 import {buildGainVolumeExpression} from './gainVolumeExpression';
 import {ImageStream} from './ImageStream';
 import {resolveAudioPath} from './resolveAudioPath';
@@ -143,7 +144,7 @@ export class FFmpegExporterServer {
       } else if (sound.gain) {
         filters.push({
           filter: 'volume',
-          options: {volume: `${sound.gain}dB`},
+          options: formatConstantGainVolume(sound.gain),
         });
       }
       const fadeIn = (sound.fadeIn ?? 0) * rate;
