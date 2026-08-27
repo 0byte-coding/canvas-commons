@@ -521,6 +521,36 @@ describe('Video playback sync', () => {
     }
   });
 
+  it('records a distinct gain event per keyframe across a delayed swell', async () => {
+    const analyzer = useMediaAudioAnalyzer();
+    vi.spyOn(analyzer, 'hasAudio').mockResolvedValue(true);
+    vi.spyOn(analyzer, 'computeNormalizeGain').mockResolvedValue(20);
+    let clip: Sound;
+    const delay = 5;
+    const run = generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      yield* waitFor(delay);
+      yield* audio.fadeLevelTo(-16, 1);
+      [clip] = useScene().sounds.getSounds() as Sound[];
+      audio.pause();
+    });
+    run();
+    await waitForPendingAudioAdjustments();
+    await flushMicrotasks();
+
+    const events = clip!.gainEvents!;
+    expect(events).toBeDefined();
+    // A swell recorded after a delay must still resolve into a rising, multi-
+    // keyframe envelope. If keyframe times collapsed to a single instant the
+    // ramp would degenerate to one event and the clip could not swell.
+    expect(events.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].time).toBeGreaterThanOrEqual(events[i - 1].time);
+    }
+    expect(events[events.length - 1].gain).toBeGreaterThan(events[0].gain);
+  });
+
   it('still lands the gain envelope when the clip is released first', async () => {
     const analyzer = useMediaAudioAnalyzer();
     let resolveMeasure!: (gain: number) => void;

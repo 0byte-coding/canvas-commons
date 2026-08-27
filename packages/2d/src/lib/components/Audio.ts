@@ -9,6 +9,7 @@ import {
   gainToDb,
   linear,
   tween,
+  usePlayback,
   useThread,
 } from '@canvas-commons/core';
 import {computed, initial, nodeName, signal} from '../decorators';
@@ -280,17 +281,24 @@ export class Audio extends Rect {
     timing: TimingFunction,
   ): ThreadGenerator {
     const thread = useThread();
+    // Gain events are sampled against the global playback clock (the same base
+    // as the clip's offset), but the thread runs on a scene-local clock that
+    // restarts at zero every scene. Rebase local time by the scene's global
+    // start so a swell in a later scene lands at the right moment instead of
+    // being read entirely past its end (stuck at the final, loud value).
+    const sceneBase = usePlayback().time - thread.time();
+    const now = () => sceneBase + thread.time();
     const from =
       (signal() as number | false) === false ? target : (signal() as number);
-    this.recordGainTarget(mode, from, thread.time());
+    this.recordGainTarget(mode, from, now());
     yield* tween(duration, value => {
       const eased = timing(value);
       const current = from + (target - from) * eased;
       (signal as SimpleSignal<number, this>)(current);
-      this.recordGainTarget(mode, current, thread.time());
+      this.recordGainTarget(mode, current, now());
     });
     (signal as SimpleSignal<number, this>)(target);
-    this.recordGainTarget(mode, target, thread.time());
+    this.recordGainTarget(mode, target, now());
     // The keyframes are now complete, so resolve them into an absolute gain
     // envelope on the current clip. Kicked off here (not at play()) so the
     // async loudness measurement reads a fully-recorded envelope.
