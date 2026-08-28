@@ -9,6 +9,7 @@ import {
   gainToDb,
   linear,
   tween,
+  useLogger,
   usePlayback,
   useThread,
 } from '@canvas-commons/core';
@@ -231,6 +232,52 @@ export class Audio extends Rect {
   }
 
   /**
+   * Animate {@link levelTo} anchored to a position in the source audio, rather
+   * than to the current point in the scene.
+   *
+   * @remarks
+   * The ramp starts at `audioTime` seconds into the source file and is placed
+   * on the timeline via the clip's own offset/start/playbackRate. Because the
+   * anchor is tied to the audio content, the fade lands at the right moment
+   * even when the clip is dragged to a different position - including before
+   * the scene that declares the `Audio` node.
+   *
+   * Unlike {@link fadeLevelTo}, this does not advance the scene clock: it only
+   * records the gain envelope. Call it (without `yield*`) alongside the rest of
+   * the scene setup.
+   *
+   * @param target - The target loudness in LUFS.
+   * @param duration - Duration of the ramp in seconds.
+   * @param audioTime - Where in the source file the ramp starts, in seconds.
+   * @param timing - Timing function for the ramp. Defaults to linear.
+   */
+  public fadeLevelToAtAudioTime(
+    target: number,
+    duration: number,
+    audioTime: number,
+    timing: TimingFunction = linear,
+  ): void {
+    const placement = this.audio.placement();
+    if (!placement) {
+      useLogger().warn({
+        message:
+          'fadeLevelToAtAudioTime called before the audio clip was registered; play() the Audio node first.',
+        inspect: this.key,
+      });
+      return;
+    }
+    const {offset, start, playbackRate} = placement;
+    const startTime = (audioTime - start) / playbackRate + offset;
+    const from =
+      (this.levelTo() as number | false) === false
+        ? target
+        : (this.levelTo() as number);
+    this.recordGainRampAt('levelTo', from, target, startTime, duration, timing);
+    this.levelTo(target);
+    this.audio.applyGainEnvelope([...this.gainTargetEvents]);
+  }
+
+  /**
    * Smoothly animate {@link normalize} to a new target LUFS over time.
    *
    * @param target - The target loudness in LUFS.
@@ -313,6 +360,31 @@ export class Audio extends Rect {
       return;
     }
     this.gainTargetEvents.push({mode, target, time});
+  }
+
+  private static readonly rampSteps = 16;
+
+  // Records a ramp at explicit timeline times (as opposed to over scene time).
+  // The timing function is sampled across fixed steps so non-linear curves are
+  // captured; the resolved envelope interpolates linearly between them.
+  private recordGainRampAt(
+    mode: GainMode,
+    from: number,
+    target: number,
+    startTime: number,
+    duration: number,
+    timing: TimingFunction,
+  ): void {
+    const steps = duration > 0 ? Audio.rampSteps : 0;
+    for (let i = 0; i <= steps; i++) {
+      const progress = steps === 0 ? 1 : i / steps;
+      const eased = timing(progress);
+      this.recordGainTarget(
+        mode,
+        from + (target - from) * eased,
+        startTime + duration * progress,
+      );
+    }
   }
 
   protected override desiredSize(): SerializedVector2<DesiredLength> {

@@ -185,6 +185,23 @@ export class MediaAudioClip {
     trackPendingAudioAdjustment(adjustment);
   }
 
+  // Timeline placement of the registered clip, or null before it registers.
+  public placement(): {
+    offset: number;
+    start: number;
+    playbackRate: number;
+  } | null {
+    const clip = this.handle?.clip;
+    if (!clip) {
+      return null;
+    }
+    return {
+      offset: clip.offset,
+      start: clip.start ?? 0,
+      playbackRate: clip.realPlaybackRate,
+    };
+  }
+
   /**
    * Close off the in-progress clip.
    *

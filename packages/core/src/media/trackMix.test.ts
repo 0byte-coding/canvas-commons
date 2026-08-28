@@ -89,6 +89,32 @@ describe('applyClipOffsets', () => {
     expect(result[0]).toBe(sounds[0]);
     expect(result[1]).toBe(sounds[1]);
   });
+
+  it('shifts the gain envelope by the same amount as the offset', () => {
+    const sounds = [
+      {
+        sourceKey: 'a',
+        offset: 1,
+        gainEvents: [
+          {time: 2, gain: -20},
+          {time: 4, gain: -6},
+        ],
+      },
+    ];
+    const result = applyClipOffsets(sounds, {a: 0.5});
+    expect(result[0].offset).toBe(1.5);
+    expect(result[0].gainEvents).toEqual([
+      {time: 2.5, gain: -20},
+      {time: 4.5, gain: -6},
+    ]);
+  });
+
+  it('leaves the gain envelope untouched when no drag applies', () => {
+    const gainEvents = [{time: 2, gain: -20}];
+    const sounds = [{sourceKey: 'a', offset: 1, gainEvents}];
+    const result = applyClipOffsets(sounds, {});
+    expect(result[0].gainEvents).toBe(gainEvents);
+  });
 });
 
 describe('resolveAudioMix', () => {

@@ -41,11 +41,25 @@ export type AudioTrackAssignments = Record<string, AudioTrackId>;
 export type AudioClipOffsets = Record<string, number>;
 
 export function applyClipOffsets<
-  T extends {sourceKey?: string; offset: number},
+  T extends {
+    sourceKey?: string;
+    offset: number;
+    gainEvents?: {time: number; gain: number}[];
+  },
 >(sounds: readonly T[], offsets: AudioClipOffsets): T[] {
   return sounds.map(sound => {
     const extra = sound.sourceKey ? offsets[sound.sourceKey] : undefined;
-    return extra ? {...sound, offset: sound.offset + extra} : sound;
+    if (!extra) {
+      return sound;
+    }
+    // The gain envelope is anchored to the same timeline as the offset, so a
+    // drag must move the envelope with the clip - otherwise a fade would stay
+    // pinned to its old position and desync from the audio.
+    const gainEvents = sound.gainEvents?.map(event => ({
+      ...event,
+      time: event.time + extra,
+    }));
+    return {...sound, offset: sound.offset + extra, gainEvents};
   });
 }
 

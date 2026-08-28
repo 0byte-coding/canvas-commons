@@ -3,6 +3,7 @@ import {
   Sound,
   useMediaAudioAnalyzer,
   useScene,
+  useTime,
   waitFor,
   waitForPendingAudioAdjustments,
 } from '@canvas-commons/core';
@@ -581,6 +582,66 @@ describe('Video playback sync', () => {
 
     expect(clip!.gainEvents).toBeDefined();
     expect(clip!.gainEvents!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it(
+    'anchors fadeLevelToAtAudioTime to the audio position without advancing the scene',
+    generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      const before = useTime();
+      audio.fadeLevelToAtAudioTime(-16, 1, 75);
+      // Recording the envelope must not consume scene time - it is scheduled,
+      // not animated over the clock.
+      expect(useTime()).toBe(before);
+      const events = (audio as unknown as {gainTargetEvents: {time: number}[]})
+        .gainTargetEvents;
+      // offset 0, start 0, rate 1 -> the ramp starts at the audio time and
+      // spans its duration.
+      expect(events[0].time).toBeCloseTo(75);
+      expect(events[events.length - 1].time).toBeCloseTo(76);
+      audio.pause();
+    }),
+  );
+
+  it(
+    'maps the audio anchor through the clip start seek',
+    generatorTest(function* () {
+      // A clip seeked 10s into the file: audio time 75 sits 65s past the seek,
+      // so it lands 65s into the clip on the timeline (offset 0, rate 1).
+      const audio = (<Audio src="clip.mp3" levelTo={-40} time={10} />) as Audio;
+      audio.play();
+      audio.fadeLevelToAtAudioTime(-16, 1, 75);
+      const events = (audio as unknown as {gainTargetEvents: {time: number}[]})
+        .gainTargetEvents;
+      expect(events[0].time).toBeCloseTo(65);
+      audio.pause();
+    }),
+  );
+
+  it('resolves an audio-anchored fade into a rising envelope', async () => {
+    const analyzer = useMediaAudioAnalyzer();
+    vi.spyOn(analyzer, 'hasAudio').mockResolvedValue(true);
+    vi.spyOn(analyzer, 'computeNormalizeGain').mockResolvedValue(20);
+    let clip: Sound;
+    const run = generatorTest(function* () {
+      const audio = (<Audio src="clip.mp3" levelTo={-40} />) as Audio;
+      audio.play();
+      audio.fadeLevelToAtAudioTime(-16, 1, 75);
+      [clip] = useScene().sounds.getSounds() as Sound[];
+      audio.pause();
+    });
+    run();
+    await waitForPendingAudioAdjustments();
+    await flushMicrotasks();
+
+    const events = clip!.gainEvents!;
+    expect(events).toBeDefined();
+    expect(events.length).toBeGreaterThanOrEqual(2);
+    expect(events[0].time).toBeCloseTo(75);
+    // ref 20: -40 -> -20 dB, -16 -> +4 dB. The envelope must rise.
+    expect(events[0].gain).toBeCloseTo(-20);
+    expect(events[events.length - 1].gain).toBeCloseTo(4);
   });
 });
 
