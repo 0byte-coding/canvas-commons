@@ -1474,6 +1474,9 @@ export class Node implements Promisable<Node> {
     const cache = this.worldSpaceCacheBBox();
     const matrix = this.localToWorld();
 
+    // the memoized body only runs when the cache is rebuilt, so this marks the frames that need a texture upload
+    this.cacheStamp = useScene2D().playback.frame;
+
     context.canvas.width = cache.width;
     context.canvas.height = cache.height;
 
@@ -1651,6 +1654,8 @@ export class Node implements Promisable<Node> {
     }
   }
 
+  protected cacheStamp = -1;
+
   private shaderCanvas(destination: TexImageSource, source: TexImageSource) {
     const shaders = this.shaders();
     if (shaders.length === 0) {
@@ -1677,7 +1682,6 @@ export class Node implements Promisable<Node> {
       .invertSelf();
 
     const gl = scene.shaders.getGL();
-    scene.shaders.copyTextures(destination, source);
     scene.shaders.clear();
 
     for (const shader of shaders) {
@@ -1685,6 +1689,12 @@ export class Node implements Promisable<Node> {
       if (!program) {
         continue;
       }
+
+      scene.shaders.copyTextures(
+        destination,
+        source,
+        this.cacheStamp === scene.playback.frame,
+      );
 
       if (shader.uniforms) {
         for (const [name, uniform] of Object.entries(shader.uniforms)) {

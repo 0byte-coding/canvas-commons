@@ -421,16 +421,21 @@ export abstract class Shape extends Layout {
       .invertSelf();
 
     const gl = scene.shaders.getGL();
-    scene.shaders.copyTextures(destination, source);
     scene.shaders.clear();
 
     for (const shader of shaders) {
       const program = scene.shaders.getProgram(shader.fragment);
       if (!program) continue;
 
+      scene.shaders.copyTextures(
+        destination,
+        source,
+        this.cacheStamp === scene.playback.frame,
+      );
+
       if (shader.uniforms) {
         for (const [name, uniform] of Object.entries(shader.uniforms)) {
-          const location = gl.getUniformLocation(program, name);
+          const location = scene.shaders.location(program, name);
           if (location === null) continue;
 
           const value = unwrap(uniform);
@@ -448,20 +453,20 @@ export abstract class Shape extends Layout {
       }
 
       gl.uniform1f(
-        gl.getUniformLocation(program, UNIFORM_TIME),
+        scene.shaders.location(program, UNIFORM_TIME),
         this.view2D.globalTime(),
       );
       gl.uniform1i(
-        gl.getUniformLocation(program, UNIFORM_FRAME),
+        scene.shaders.location(program, UNIFORM_FRAME),
         scene.playback.frame,
       );
       gl.uniformMatrix4fv(
-        gl.getUniformLocation(program, UNIFORM_SOURCE_MATRIX),
+        scene.shaders.location(program, UNIFORM_SOURCE_MATRIX),
         false,
         cameraToCache.toFloat32Array(),
       );
       gl.uniformMatrix4fv(
-        gl.getUniformLocation(program, UNIFORM_DESTINATION_MATRIX),
+        scene.shaders.location(program, UNIFORM_DESTINATION_MATRIX),
         false,
         cameraToWorld.toFloat32Array(),
       );

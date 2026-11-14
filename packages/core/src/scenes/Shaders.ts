@@ -149,20 +149,18 @@ export class Shaders implements WebGLContextOwner {
       return null;
     }
 
-    this.usesDestinationTexture = fragment.includes(UNIFORM_DESTINATION_TEXTURE);
-
     const size = this.scene.getRealSize();
     const gl = this.getGL();
     gl.useProgram(program);
     gl.uniform1i(this.location(program, UNIFORM_SOURCE_TEXTURE), 0);
+
+    // a sampler the shader never samples is stripped by the compiler, so its texture stays unused
+    const destination = this.location(program, UNIFORM_DESTINATION_TEXTURE);
+    this.usesDestinationTexture = destination !== null;
     if (this.usesDestinationTexture) {
-      gl.uniform1i(this.location(program, UNIFORM_DESTINATION_TEXTURE), 1);
+      gl.uniform1i(destination, 1);
     }
-    gl.uniform2f(
-      this.location(program, UNIFORM_RESOLUTION),
-      size.x,
-      size.y,
-    );
+    gl.uniform2f(this.location(program, UNIFORM_RESOLUTION), size.x, size.y);
     gl.uniform1f(
       this.location(program, UNIFORM_DELTA_TIME),
       this.scene.playback.deltaTime,
@@ -175,21 +173,32 @@ export class Shaders implements WebGLContextOwner {
     return program;
   }
 
-  public location(program: WebGLProgram, name: string): WebGLUniformLocation | null {
-    const program_locations = this.locations.get(program) ?? new Map<string, WebGLUniformLocation | null>();
-    this.locations.set(program, program_locations);
-    const cached = program_locations.get(name);
+  public location(
+    program: WebGLProgram,
+    name: string,
+  ): WebGLUniformLocation | null {
+    const programLocations =
+      this.locations.get(program) ??
+      new Map<string, WebGLUniformLocation | null>();
+    this.locations.set(program, programLocations);
+    const cached = programLocations.get(name);
     if (cached !== undefined) {
       return cached;
     }
 
     const location = this.getGL().getUniformLocation(program, name);
-    program_locations.set(name, location);
+    programLocations.set(name, location);
     return location;
   }
 
-  public copyTextures(destination: TexImageSource, source: TexImageSource) {
-    this.copyTexture(source, this.sourceTexture!);
+  public copyTextures(
+    destination: TexImageSource,
+    source: TexImageSource,
+    sourceChanged: boolean,
+  ) {
+    if (sourceChanged) {
+      this.copyTexture(source, this.sourceTexture!);
+    }
     if (this.usesDestinationTexture) {
       this.copyTexture(destination, this.destinationTexture!);
     }
