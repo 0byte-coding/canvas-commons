@@ -40,10 +40,8 @@ export class Stage {
     this.previousBuffer = document.createElement('canvas');
 
     const colorSpace = this.colorSpace;
-    this.context = getContext(
-      {colorSpace, willReadFrequently: true},
-      this.finalBuffer,
-    );
+    // the display buffer is not read per frame, so keeping it gpu-backed keeps the preview smooth
+    this.context = getContext({colorSpace}, this.finalBuffer);
     this.currentContext = getContext({colorSpace}, this.currentBuffer);
     this.previousContext = getContext({colorSpace}, this.previousBuffer);
   }

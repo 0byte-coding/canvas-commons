@@ -532,6 +532,8 @@ export class Player {
           await this.run();
         } catch (e: any) {
           this.logger.error(e);
+          // a failed frame must not stop the update loop
+          this.request();
         }
         this.lock.release();
       } else {
