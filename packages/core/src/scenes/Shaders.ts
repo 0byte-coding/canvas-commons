@@ -72,6 +72,11 @@ export class Shaders implements WebGLContextOwner {
   private sourceTexture: WebGLTexture | null = null;
   private destinationTexture: WebGLTexture | null = null;
   private positionLocation = 0;
+  private usesDestinationTexture = false;
+  private readonly locations = new WeakMap<
+    WebGLProgram,
+    Map<string, WebGLUniformLocation | null>
+  >();
   private readonly quadPositions = new Float32Array([
     -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0,
   ]);
@@ -97,12 +102,15 @@ export class Shaders implements WebGLContextOwner {
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // textures are sampled 1:1, so the mip chain is never read and can be skipped
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 
     this.destinationTexture = gl.createTexture();
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.destinationTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   }
 
   public teardown(gl: WebGL2RenderingContext): void {
@@ -141,34 +149,50 @@ export class Shaders implements WebGLContextOwner {
       return null;
     }
 
+    this.usesDestinationTexture = fragment.includes(UNIFORM_DESTINATION_TEXTURE);
+
     const size = this.scene.getRealSize();
     const gl = this.getGL();
     gl.useProgram(program);
-    gl.uniform1i(gl.getUniformLocation(program, UNIFORM_SOURCE_TEXTURE), 0);
-    gl.uniform1i(
-      gl.getUniformLocation(program, UNIFORM_DESTINATION_TEXTURE),
-      1,
-    );
+    gl.uniform1i(this.location(program, UNIFORM_SOURCE_TEXTURE), 0);
+    if (this.usesDestinationTexture) {
+      gl.uniform1i(this.location(program, UNIFORM_DESTINATION_TEXTURE), 1);
+    }
     gl.uniform2f(
-      gl.getUniformLocation(program, UNIFORM_RESOLUTION),
+      this.location(program, UNIFORM_RESOLUTION),
       size.x,
       size.y,
     );
     gl.uniform1f(
-      gl.getUniformLocation(program, UNIFORM_DELTA_TIME),
+      this.location(program, UNIFORM_DELTA_TIME),
       this.scene.playback.deltaTime,
     );
     gl.uniform1f(
-      gl.getUniformLocation(program, UNIFORM_FRAMERATE),
+      this.location(program, UNIFORM_FRAMERATE),
       this.scene.playback.fps,
     );
 
     return program;
   }
 
+  public location(program: WebGLProgram, name: string): WebGLUniformLocation | null {
+    const program_locations = this.locations.get(program) ?? new Map<string, WebGLUniformLocation | null>();
+    this.locations.set(program, program_locations);
+    const cached = program_locations.get(name);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const location = this.getGL().getUniformLocation(program, name);
+    program_locations.set(name, location);
+    return location;
+  }
+
   public copyTextures(destination: TexImageSource, source: TexImageSource) {
     this.copyTexture(source, this.sourceTexture!);
-    this.copyTexture(destination, this.destinationTexture!);
+    if (this.usesDestinationTexture) {
+      this.copyTexture(destination, this.destinationTexture!);
+    }
   }
 
   public clear() {
@@ -186,6 +210,5 @@ export class Shaders implements WebGLContextOwner {
     const gl = this.getGL();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    gl.generateMipmap(gl.TEXTURE_2D);
   }
 }
