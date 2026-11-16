@@ -1,3 +1,4 @@
+import {decibelsToAmplitude, SILENCE_DB} from '@canvas-commons/core';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {useScene2D} from '../../scenes';
 import {Video} from '../Video';
@@ -48,6 +49,26 @@ describe('Video audio', () => {
     video['applyAudioState'](element);
 
     expect(element.muted).toBe(true);
+  });
+
+  it('applies the envelope to the element volume', () => {
+    playback.volume = 1;
+    playback.frame = 0;
+
+    const video = new Video({src: 'clip.mp4'});
+    useScene2D().getView().add(video);
+    const element = video['video']();
+
+    video.gain(-20).fadeIn(2);
+    video['applyAudioState'](element);
+    expect(element.volume).toBeCloseTo(decibelsToAmplitude(SILENCE_DB), 6);
+
+    playback.frame = 30;
+    video['applyAudioState'](element);
+    expect(element.volume).toBeCloseTo(
+      (decibelsToAmplitude(SILENCE_DB) + decibelsToAmplitude(-20)) / 2,
+      6,
+    );
   });
 
   it('stops the media when the node leaves the tree', () => {

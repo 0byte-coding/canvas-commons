@@ -1,4 +1,5 @@
 import {
+  amplitudeAt,
   BBox,
   clamp,
   createEffect,
@@ -478,7 +479,10 @@ export class Video extends Rect {
   private applyAudioState(element: HTMLVideoElement): void {
     const playback = usePlayback();
     element.muted = playback.muted;
-    element.volume = playback.volume;
+    // a media element cannot go above unity, so positive gains only reach the export
+    element.volume = this.sound
+      ? clamp(0, 1, playback.volume * amplitudeAt(this.sound, playback.time))
+      : playback.volume;
   }
   /**
    * Move the element to the timestamp without waiting for it, so that playback
