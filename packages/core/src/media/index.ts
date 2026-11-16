@@ -12,4 +12,5 @@ export * from './decibelsToAmplitude';
 export * from './FrameCache';
 export * from './FrameSource';
 export * from './FrameSourceRegistry';
+export * from './gain_envelope';
 export * from './loadImage';
