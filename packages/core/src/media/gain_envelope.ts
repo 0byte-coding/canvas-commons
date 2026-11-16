@@ -37,7 +37,7 @@ export interface GainKeyframe {
  * An audio source with a base level and its keyframes.
  */
 export interface GainSource {
-  gain: number;
+  gain?: number;
   envelope: GainKeyframe[];
 }
 
@@ -63,7 +63,7 @@ export function amplitudeAt(source: GainSource, time: number): number {
     (a, b) => keyframeStart(a) - keyframeStart(b),
   );
 
-  let value = decibelsToAmplitude(source.gain);
+  let value = decibelsToAmplitude(source.gain ?? 0);
   for (let index = 0; index < keyframes.length; index++) {
     const keyframe = keyframes[index];
     const start = keyframeStart(keyframe);
