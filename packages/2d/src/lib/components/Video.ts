@@ -291,11 +291,6 @@ export class Video extends Rect {
     return super.remove();
   }
 
-  public override dispose() {
-    this.closeAudio();
-    super.dispose();
-  }
-
   private closeAudio(): void {
     if (!this.sound || !this.audioScene || this.sound.end !== undefined) {
       return;
@@ -844,6 +839,7 @@ export class Video extends Rect {
       this.poolKey = '';
     }
 
+    this.closeAudio();
     super.dispose();
   }
 
