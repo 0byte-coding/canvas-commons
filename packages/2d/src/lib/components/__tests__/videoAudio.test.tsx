@@ -14,7 +14,7 @@ function playingElement(video: Video): HTMLVideoElement {
 }
 
 describe('Video audio', () => {
-  const playback = mockScene2D();
+  const {playback} = mockScene2D();
 
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(
