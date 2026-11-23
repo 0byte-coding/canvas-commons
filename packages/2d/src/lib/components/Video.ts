@@ -150,6 +150,8 @@ export class Video extends Rect {
   declare protected readonly playing: SimpleSignal<boolean, this>;
 
   private lastTime = -1;
+  // element creation must not read the time signal, which is a getter that clamps through this.video()
+  private readonly startPoint = 0;
   private element: HTMLVideoElement | null = null;
   private poolKey = '';
   private readonly stopOnDetach: () => void;
@@ -161,6 +163,7 @@ export class Video extends Rect {
 
   public constructor({play, ...props}: VideoProps) {
     super(props);
+    this.startPoint = this.time();
 
     // a node outside the tree is never drawn, so its media must stop when it leaves
     this.stopOnDetach = createEffect(() => {
@@ -396,7 +399,7 @@ export class Video extends Rect {
       video.crossOrigin = 'anonymous';
       // the element starts loading at the requested time, which avoids a seek
       // (and the blank frames it causes) once the node becomes visible
-      const start = this.time();
+      const start = this.startPoint;
       if (Number.isFinite(start) && start > 0) {
         video.currentTime = start;
       }
@@ -785,6 +788,10 @@ export class Video extends Rect {
 
   public clampTime(time: number): number {
     const duration = this.video().duration;
+    // a media element that has not read its metadata has no duration to clamp against
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return time;
+    }
     if (this.loop()) {
       time %= duration;
     }
@@ -793,18 +800,17 @@ export class Video extends Rect {
 
   protected override collectAsyncResources() {
     super.collectAsyncResources();
-    this.awaitVideo();
 
-    const time = this.clampTime(this.time());
-    if (this.isLive()) {
-      this.syncElement(this.video(), time);
+    // waiting for media here turns a slow decoder into a slow timeline, so only
+    // the size dependency is collected; the draw collects the frame it needs
+    if (this.needsMediaSize()) {
+      this.awaitVideo();
     }
+  }
 
-    // a shot that is about to play gets its first frame decoded, so the video
-    // has something to show before the element presents anything
-    if (!this.frameSource().isCached(time)) {
-      this.requestFrame(time);
-    }
+  private needsMediaSize(): boolean {
+    const size = super.desiredSize();
+    return size.x === null || size.y === null;
   }
 
   private static limitPool(keep: string): void {
